@@ -1,0 +1,8 @@
+# Frontend en Netlify si se conecta un repositorio. Si se arrastra la carpeta dist (Netlify Drop), los
+# encabezados de seguridad salen de public/_headers, que Vite copia a dist.
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
