@@ -1,0 +1,57 @@
+# Publicación gratuita en Render (Blueprint): API en Docker y pantallas como sitio estático.
+# Los secretos no van acá: Render los pide al crear el Blueprint (sync: false).
+services:
+  - type: web
+    name: arfinance-api
+    runtime: docker
+    plan: free
+    region: virginia          # Render no tiene región en Sudamérica
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /salud
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: ENTORNO
+        value: produccion
+      - key: WORKER_EMBEBIDO
+        value: "1"
+      - key: CORS_ORIGENES
+        value: https://arfinance-gestion.onrender.com
+      - key: ADMINS_PLATAFORMA
+        value: arfinance112@gmail.com
+      - key: METRICAS_TOKEN
+        generateValue: true
+      - key: SUPABASE_URL
+        value: https://pznuwkdoognzequxjnez.supabase.co
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+
+  - type: web
+    name: arfinance-gestion
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: strict-origin-when-cross-origin
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://arfinance-api.onrender.com https://pznuwkdoognzequxjnez.supabase.co wss://pznuwkdoognzequxjnez.supabase.co; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    envVars:
+      # públicos a propósito: quedan en el navegador
+      - key: VITE_API_URL
+        value: https://arfinance-api.onrender.com
+      - key: VITE_SUPABASE_URL
+        value: https://pznuwkdoognzequxjnez.supabase.co
+      - key: VITE_SUPABASE_ANON_KEY
+        value: sb_publishable_R7R019qgjM533coNZSfPGQ_KM4TGq0A

@@ -1,0 +1,15 @@
+# Nada de secretos, datos locales ni dependencias de la PC dentro de la imagen
+.env
+*.env.local
+.pgdata/
+.pgenv/
+.claude/
+frontend/
+docs/
+tools/
+backend/tests/
+backend/.storage/
+backend/.tessdata/
+**/__pycache__/
+**/*.pyc
+respaldos/

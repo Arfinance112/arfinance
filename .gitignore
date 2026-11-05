@@ -1,0 +1,18 @@
+.pgenv/
+.pgdata/
+__pycache__/
+.pytest_cache/
+node_modules/
+dist/
+.env
+
+# idiomas de Tesseract descargados localmente
+backend/.tessdata/
+
+# claves locales (frontend)
+.env.local
+*.env.local
+
+logs/
+
+para_github/
