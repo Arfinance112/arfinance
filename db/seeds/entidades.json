@@ -1,0 +1,326 @@
+[
+ {
+  "nombre": "Banco de la Nación Argentina",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco de la Provincia de Buenos Aires",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco Ciudad de Buenos Aires",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco de Córdoba (Bancor)",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco de La Pampa",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco del Chubut",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco de Corrientes",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco Provincia del Neuquén (BPN)",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco de Tierra del Fuego",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco de Formosa",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco Rioja",
+  "tipo": "Banco público"
+ },
+ {
+  "nombre": "Banco Santiago del Estero",
+  "tipo": "Banco provincial"
+ },
+ {
+  "nombre": "Banco Galicia",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Galicia Más (ex HSBC)",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Santander Argentina",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "BBVA Argentina",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Macro",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "ICBC Argentina",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Credicoop",
+  "tipo": "Banco cooperativo"
+ },
+ {
+  "nombre": "Banco Patagonia",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Supervielle",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Comafi",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Hipotecario",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Nuevo Banco de Santa Fe",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Nuevo Banco de Entre Ríos",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco San Juan",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Santa Cruz",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Industrial (BIND)",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Columbia",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco del Sol",
+  "tipo": "Banco digital"
+ },
+ {
+  "nombre": "Brubank",
+  "tipo": "Banco digital"
+ },
+ {
+  "nombre": "Openbank",
+  "tipo": "Banco digital"
+ },
+ {
+  "nombre": "Banco Voii",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco CMF",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco de Valores",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Julio",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Banco Mariva",
+  "tipo": "Banco privado"
+ },
+ {
+  "nombre": "Mercado Pago",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Ualá",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Naranja X",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Cuenta DNI (Banco Provincia)",
+  "tipo": "Billetera bancaria"
+ },
+ {
+  "nombre": "MODO",
+  "tipo": "Billetera interoperable (usa cuentas bancarias)"
+ },
+ {
+  "nombre": "Personal Pay",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Claro Pay",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Prex",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Reba",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "AstroPay",
+  "tipo": "Billetera virtual / PSP"
+ },
+ {
+  "nombre": "Lemon",
+  "tipo": "Billetera cripto / PSP"
+ },
+ {
+  "nombre": "Belo",
+  "tipo": "Billetera cripto / PSP"
+ },
+ {
+  "nombre": "Fiwind",
+  "tipo": "Billetera cripto / PSP"
+ },
+ {
+  "nombre": "Buenbit",
+  "tipo": "Exchange cripto"
+ },
+ {
+  "nombre": "Ripio",
+  "tipo": "Exchange cripto"
+ },
+ {
+  "nombre": "Binance",
+  "tipo": "Exchange cripto"
+ },
+ {
+  "nombre": "Bitso",
+  "tipo": "Exchange cripto"
+ },
+ {
+  "nombre": "Payway (ex Prisma)",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Fiserv (ex First Data)",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Getnet (Santander)",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Nave (Galicia)",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Viumi (Macro)",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Mercado Pago Point",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Ualá Bis",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Clover (Fiserv)",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "Mercado Libre (liquidaciones marketplace)",
+  "tipo": "Marketplace"
+ },
+ {
+  "nombre": "Tienda Nube Pago Nube",
+  "tipo": "Procesador de pagos"
+ },
+ {
+  "nombre": "PayPal",
+  "tipo": "Cobros del exterior"
+ },
+ {
+  "nombre": "Payoneer",
+  "tipo": "Cobros del exterior"
+ },
+ {
+  "nombre": "Wise",
+  "tipo": "Cobros del exterior"
+ },
+ {
+  "nombre": "Invertir Online (IOL)",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Balanz",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Bull Market Brokers",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Cocos Capital",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Portfolio Personal Inversiones (PPI)",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Allaria",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Invertir en Bolsa (IEB)",
+  "tipo": "Broker / ALyC"
+ },
+ {
+  "nombre": "Visa",
+  "tipo": "Tarjeta de crédito"
+ },
+ {
+  "nombre": "Mastercard",
+  "tipo": "Tarjeta de crédito"
+ },
+ {
+  "nombre": "American Express",
+  "tipo": "Tarjeta de crédito"
+ },
+ {
+  "nombre": "Cabal",
+  "tipo": "Tarjeta de crédito"
+ },
+ {
+  "nombre": "Naranja",
+  "tipo": "Tarjeta de crédito"
+ },
+ {
+  "nombre": "Efectivo propio (caja)",
+  "tipo": "Caja física"
+ },
+ {
+  "nombre": "Otro (especificar en observaciones)",
+  "tipo": "Otro"
+ }
+]

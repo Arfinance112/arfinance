@@ -1,0 +1,224 @@
+{
+ "TipoCuenta": [
+  "Banco - Cuenta corriente",
+  "Banco - Caja de ahorro",
+  "Billetera virtual / PSP (CVU)",
+  "Caja física (efectivo)",
+  "Procesador de pagos (a liquidar)",
+  "Broker / ALyC",
+  "Exchange cripto",
+  "Plazo fijo / FCI",
+  "Valores a depositar (cheques / eCheq)",
+  "Tarjeta de crédito (pasivo)"
+ ],
+ "Cotiz": [
+  "ARS",
+  "USD_OFICIAL",
+  "USD_MEP",
+  "USD_CCL",
+  "USD_BLUE",
+  "USDT",
+  "EUR_OFICIAL",
+  "BRL_OFICIAL"
+ ],
+ "Moneda": [
+  "ARS",
+  "USD",
+  "EUR",
+  "BRL",
+  "USDT"
+ ],
+ "TipoMov": [
+  "Ingreso",
+  "Egreso"
+ ],
+ "Medio": [
+  "Transferencia",
+  "Efectivo",
+  "QR / billetera",
+  "Tarjeta de débito",
+  "Tarjeta de crédito",
+  "Link de pago",
+  "DEBIN",
+  "Débito automático",
+  "eCheq",
+  "Cheque físico",
+  "Depósito",
+  "Liquidación procesador"
+ ],
+ "Condicion": [
+  "Contado",
+  "Cuenta corriente"
+ ],
+ "Comprob": [
+  "Factura A",
+  "Factura B",
+  "Factura C",
+  "Factura E (export.)",
+  "Factura M",
+  "Nota de crédito A",
+  "Nota de crédito B",
+  "Nota de crédito C",
+  "Nota de débito",
+  "Ticket / Tique factura",
+  "Recibo",
+  "Liquidación (procesador / marketplace)",
+  "Comprobante del exterior",
+  "Interno (no fiscal)"
+ ],
+ "CondIVA": [
+  "Responsable Inscripto",
+  "Monotributista",
+  "Exento",
+  "Consumidor Final",
+  "Sujeto del exterior"
+ ],
+ "TipoItem": [
+  "Bien",
+  "Servicio"
+ ],
+ "UN": [
+  "Minorista",
+  "Mayorista",
+  "Servicios",
+  "E-commerce",
+  "UN5",
+  "UN6",
+  "UN7",
+  "UN8",
+  "GENERAL"
+ ],
+ "Canal": [
+  "Local / mostrador",
+  "Mayorista / distribución",
+  "E-commerce propio",
+  "Marketplace (Mercado Libre, etc.)",
+  "Redes sociales / WhatsApp",
+  "Venta directa B2B",
+  "Licitación / Estado",
+  "Exportación"
+ ],
+ "Causa": [
+  "Vencimiento",
+  "Rotura / daño",
+  "Robo / faltante",
+  "Error de producción / preparación",
+  "Devolución de cliente",
+  "Reproceso / garantía (servicios)",
+  "Muestra / degustación",
+  "Ajuste de inventario",
+  "Bonificación / descuento no previsto"
+ ],
+ "Modalidad": [
+  "Relación de dependencia - CCT",
+  "Relación de dependencia - Fuera de convenio",
+  "Monotributista / honorarios",
+  "Socio / dueño (sueldo de gestión)",
+  "Pasantía / eventual"
+ ],
+ "Indice": [
+  "IPC",
+  "CCT",
+  "TARIFA",
+  "USD",
+  "FIJO"
+ ],
+ "LineaPL": [
+  "1 Ventas de bienes",
+  "2 Ventas de servicios",
+  "3 Otros ingresos operativos",
+  "4 Costo variable",
+  "5 Personal",
+  "6 Estructura",
+  "7 Comercialización",
+  "8 Impuestos fijos y tasas",
+  "9 Resultado financiero",
+  "10 Impuesto a las ganancias",
+  "NO P&L"
+ ],
+ "LineaCF": [
+  "Cobranzas de clientes",
+  "Otros ingresos operativos",
+  "Pagos a proveedores",
+  "Sueldos y cargas sociales",
+  "Impuestos y tasas",
+  "Gastos operativos directos",
+  "Ingresos y gastos financieros",
+  "Inversiones (CapEx)",
+  "Préstamos recibidos",
+  "Cancelación de préstamos",
+  "Aportes de socios",
+  "Retiros / dividendos",
+  "Movimientos internos",
+  "Sin movimiento de caja"
+ ],
+ "SN": [
+  "S",
+  "N"
+ ],
+ "Comport": [
+  "Variable",
+  "Fijo",
+  "Discrecional",
+  "No aplica"
+ ],
+ "Prime": [
+  "MATERIALES",
+  "PERSONAL"
+ ],
+ "TipoTercero": [
+  "Cliente",
+  "Proveedor",
+  "Ambos"
+ ],
+ "Actividad": [
+  "Venta de bienes",
+  "Prestación de servicios",
+  "Mixta (bienes + servicios)"
+ ],
+ "Dir": [
+  "≥",
+  "≤"
+ ],
+ "ColLetra": [
+  "A",
+  "B",
+  "C",
+  "D",
+  "E",
+  "F",
+  "G",
+  "H",
+  "I",
+  "J",
+  "K",
+  "L",
+  "M",
+  "N",
+  "O",
+  "P"
+ ],
+ "FmtFecha": [
+  "DMY",
+  "YMD",
+  "MDY"
+ ],
+ "ModoImp": [
+  "Importe con signo",
+  "Débito / Crédito separados",
+  "Importe + columna de tipo"
+ ],
+ "TipoOrigen": [
+  "Banco",
+  "Billetera virtual / PSP",
+  "Procesador de pagos",
+  "Tarjeta de crédito",
+  "Broker / exchange",
+  "Caja",
+  "Otro"
+ ],
+ "Orden": [
+  "Más nuevo arriba",
+  "Más viejo arriba"
+ ]
+}
