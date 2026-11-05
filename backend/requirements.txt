@@ -1,0 +1,11 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.9
+python-multipart>=0.0.9
+openpyxl>=3.1
+pdfplumber>=0.11          # trae pypdfium2 y Pillow (también los usa el OCR)
+pyjwt[crypto]>=2.8        # tokens de Supabase Auth: HS256 (secreto) o ES256/RS256 (claves de firma, JWKS)
+psycopg[binary]>=3.2      # PostgreSQL / Supabase
+httpx>=0.27               # Supabase Storage
+# tests
+pytest>=8
