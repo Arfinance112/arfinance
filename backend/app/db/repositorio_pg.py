@@ -349,7 +349,22 @@ class RepositorioPostgres:
                                    AND (NOT %s OR rubro_codigo IS NULL) ORDER BY fecha, comprobante""",
                                 (cliente_id, sentido, sentido, sin_rubro)).fetchall()
         return [ComprobanteRegistrado(str(f["id"]), f["sentido"], f["fecha"], f["comprobante"], f["cuit"], f["contraparte"],
-                                      f["neto"] * f["tipo_cambio"], f["rubro_codigo"], f["total"] * f["tipo_cambio"]) for f in filas]
+                                      f["neto"] * f["tipo_cambio"], f["rubro_codigo"], f["total"] * f["tipo_cambio"],
+                                      f["unidad_negocio"], f["centro_costo"]) for f in filas]
+
+    def clasificar_comprobante(self, cliente_id: str, comprobante_id: str, unidad_negocio: str | None,
+                               centro_costo: str | None, mismo_cuit: bool) -> int:
+        if not _es_uuid(comprobante_id):
+            return 0
+        with self._con() as con, con.transaction():
+            f = con.execute("SELECT sentido, cuit FROM comprobantes_arca WHERE id = %s AND cliente_id = %s",
+                            (comprobante_id, cliente_id)).fetchone()
+            if not f:
+                return 0
+            return con.execute("""UPDATE comprobantes_arca SET unidad_negocio = %s, centro_costo = %s
+                                  WHERE cliente_id = %s AND (id = %s OR (%s AND sentido = %s AND cuit = %s))""",
+                               (unidad_negocio, centro_costo, cliente_id, comprobante_id, mismo_cuit,
+                                f["sentido"], f["cuit"])).rowcount
 
     def asignar_rubro(self, cliente_id: str, comprobante_id: str, rubro: str, recordar: bool) -> int:
         if not _es_uuid(comprobante_id):
