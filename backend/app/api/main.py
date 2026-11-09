@@ -166,7 +166,7 @@ class CorreccionIn(BaseModel):
 
 
 class AprobacionIn(BaseModel):
-    incluir_posibles_duplicados: bool = False
+    """Sin opciones: los posibles duplicados nunca se cargan (se quitó la opción de pasarlos igual)."""
 
 
 # ------------------------------------------------------------------ helpers
@@ -208,8 +208,16 @@ def _conciliacion(r: Repositorio, lote: Lote) -> dict:
     pendiente = Decimal(0) if lote.estado == "aprobado" else sum(
         (m.importe_firmado for m in _a_insertar(res, False) if m.fecha <= res.fecha_ultima), Decimal(0))
     despues = actual + pendiente
-    return {"fecha": res.fecha_ultima, "saldo_extracto": res.saldo_extracto, "saldo_planilla_actual": actual,
-            "saldo_planilla_despues_de_aprobar": despues,
+    # saldo inicial: el banco arranca en (saldo final − neto de TODOS los movimientos del extracto, duplicados
+    # incluidos, porque el extracto los trae); el sistema, en su saldo del día anterior al primer movimiento
+    primera = min((m.fecha for m in res.movimientos), default=res.fecha_ultima)
+    neto = sum((m.importe_firmado for m in res.movimientos), Decimal(0))
+    inicial_extracto = None if res.saldo_extracto is None else res.saldo_extracto - neto
+    inicial_sistema = _saldo_planilla(r, lote.cliente_id, lote.cuenta, primera - timedelta(days=1))
+    return {"fecha": res.fecha_ultima, "fecha_inicial": primera, "saldo_extracto": res.saldo_extracto,
+            "saldo_inicial_extracto": inicial_extracto, "saldo_inicial_sistema": inicial_sistema,
+            "diferencia_inicial": None if inicial_extracto is None else inicial_extracto - inicial_sistema,
+            "saldo_planilla_actual": actual, "saldo_planilla_despues_de_aprobar": despues,
             "diferencia": None if res.saldo_extracto is None else res.saldo_extracto - despues}
 
 
@@ -921,6 +929,64 @@ async def subir_documento(cliente_id: str, archivo: UploadFile = File(...), cuen
                                                   "motivo": "ocr" if parametros.get("ocr") else "tamano"})
 
 
+def _documento_o_404(r: Repositorio, documento_id: str, u: Usuario) -> Documento:
+    doc = r.documento(documento_id)
+    if not doc or not r.puede_ver_cliente(u.id, doc.cliente_id):
+        raise HTTPException(404, "Documento inexistente")
+    return doc
+
+
+MAX_FILAS_VISTA = 500
+TIPOS_MIME = {".pdf": "application/pdf", ".csv": "text/csv; charset=utf-8", ".txt": "text/plain; charset=utf-8",
+              ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+              ".xlsm": "application/vnd.ms-excel.sheet.macroEnabled.12"}
+
+
+@app.get("/documentos/{documento_id}/vista")
+def ver_documento(documento_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
+                  alm: Almacenamiento = Depends(almacen)):
+    """Lo que el sistema lee del archivo (filas, o texto si es un PDF sin tablas), para revisarlo en pantalla."""
+    doc = _documento_o_404(r, documento_id, u)
+    try:
+        leido = leer_archivo(doc.nombre, alm.leer(doc.storage_path))
+    except FormatoNoSoportado as e:
+        raise HTTPException(415, str(e))
+    filas = [[("" if c is None else str(c)) for c in f] for f in leido.filas[:MAX_FILAS_VISTA]]
+    return {"id": doc.id, "nombre": doc.nombre, "tipo": doc.tipo, "estado": doc.estado, "detalle": doc.detalle,
+            "extension": leido.extension, "hojas": leido.hojas, "filas": filas, "total_filas": len(leido.filas),
+            "texto": leido.texto[:20000] if leido.extension == ".pdf" else ""}
+
+
+@app.get("/documentos/{documento_id}/archivo")
+def descargar_documento(documento_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
+                        alm: Almacenamiento = Depends(almacen)):
+    """El archivo original tal como se subió (para abrirlo o guardarlo)."""
+    doc = _documento_o_404(r, documento_id, u)
+    ext = os.path.splitext(doc.nombre)[1].lower()
+    nombre = doc.nombre.replace('"', "")
+    return Response(alm.leer(doc.storage_path), media_type=TIPOS_MIME.get(ext, "application/octet-stream"),
+                    headers={"Content-Disposition": f'inline; filename="{nombre}"',
+                             "X-Content-Type-Options": "nosniff"})
+
+
+@app.delete("/documentos/{documento_id}", status_code=204)
+def eliminar_documento(documento_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
+                       alm: Almacenamiento = Depends(almacen)):
+    """Borra el documento, el archivo original y todo lo que se cargó desde él (comprobantes, F.931, ventas
+    por ítem, el lote de un extracto). Un extracto que ya pasó movimientos a Tesorería no se borra."""
+    doc = _documento_o_404(r, documento_id, u)
+    lote = r.lote(doc.lote_id) if doc.lote_id else None
+    if lote and lote.estado == "aprobado" and lote.resultado.movimientos:
+        raise HTTPException(409, "Este extracto ya pasó sus movimientos a Tesorería: no se puede eliminar sin borrar esos movimientos.")
+    r.borrar_documento(doc.id)
+    try:
+        alm.borrar(doc.storage_path)
+    except Exception as e:  # noqa: BLE001 — el registro ya no está; un archivo huérfano no rompe nada
+        log.warning("archivo_no_borrado", extra={"error": repr(e)})
+    log.info("documento_eliminado", extra={"cliente_id": doc.cliente_id, "tipo": doc.tipo})
+    return Response(status_code=204)
+
+
 @app.post("/documentos/{documento_id}/reprocesar")
 def reprocesar_documento(documento_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
                          alm: Almacenamiento = Depends(almacen)):
@@ -1082,7 +1148,7 @@ def aprobar_lote(lote_id: str, body: AprobacionIn, u: Usuario = Depends(usuario_
     bloqueados = [i for i, m in enumerate(lote.resultado.movimientos) if m.bloqueado]
     if bloqueados:
         raise HTTPException(409, {"mensaje": "Hay movimientos sin rubro válido", "movimientos": bloqueados})
-    elegidos = _a_insertar(lote.resultado, body.incluir_posibles_duplicados)
+    elegidos = _a_insertar(lote.resultado, False)
     r.insertar_tesoreria(lote.cliente_id, [MovimientoTesoreria(
         cuenta=m.cuenta, fecha=m.fecha, tipo=m.tipo, importe=m.importe, rubro=m.rubro, descripcion=m.descripcion,
         referencia=m.referencia, tercero=m.tercero, comprobante=m.comprobante, medio_pago=m.medio_pago,
