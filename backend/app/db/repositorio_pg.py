@@ -17,7 +17,7 @@ from psycopg.rows import dict_row
 from app.api.repositorio import MAX_INTENTOS, Cliente, Cuenta, Documento, Lote, Miembro, Trabajo
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
-from app.finanzas.items import Item, LineaVenta, Merma
+from app.finanzas.items import Item, LineaCompra, LineaVenta, Merma
 from app.finanzas.plan_cuentas import CuentaContable
 from app.finanzas.tablero import DatosCierre
 from app.ingesta.comprobantes_arca import ComprobanteArca
@@ -218,7 +218,7 @@ class RepositorioPostgres:
         """Borra el documento y TODO lo que se cargó desde él (para reprocesarlo). El lote y su staging caen en
         cascada; la API no llama a esto si el lote ya pasó movimientos a Tesorería."""
         with self._con() as con, con.transaction():
-            for tabla in ("comprobantes_arca", "t_ventas", "t_compras", "f931_declaraciones"):
+            for tabla in ("comprobantes_arca", "t_ventas", "t_compras", "compras_por_item", "f931_declaraciones"):
                 con.execute(f"DELETE FROM {tabla} WHERE documento_id = %s", (documento_id,))
             con.execute("DELETE FROM documentos WHERE id = %s", (documento_id,))
 
@@ -504,6 +504,27 @@ class RepositorioPostgres:
             filas = con.execute("SELECT * FROM t_ventas WHERE cliente_id = %s ORDER BY fecha, comprobante", (cliente_id,)).fetchall()
         return [LineaVenta(f["fecha"], f["comprobante"], f["item_codigo"], f["cantidad"], f["precio_unitario"] or Decimal(0), str(f["id"]))
                 for f in filas]
+
+    def guardar_lineas_compra(self, cliente_id: str, documento_id: str, lineas: list) -> tuple[int, int]:
+        nuevas = 0
+        with self._con() as con, con.transaction():
+            for l in lineas:
+                f = con.execute("""INSERT INTO compras_por_item (cliente_id, fecha, comprobante, proveedor, item_codigo, cantidad,
+                                       costo_unitario, documento_id)
+                                   VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                                   ON CONFLICT (cliente_id, fecha, comprobante, proveedor, item_codigo, cantidad, costo_unitario)
+                                   DO NOTHING RETURNING id""",
+                                (cliente_id, l.fecha, l.comprobante, l.proveedor, l.item, l.cantidad, l.costo_unitario,
+                                 documento_id or None)).fetchone()
+                nuevas += 1 if f else 0
+        return nuevas, len(lineas) - nuevas
+
+    def lineas_compra(self, cliente_id: str) -> list:
+        with self._con() as con:
+            filas = con.execute("SELECT * FROM compras_por_item WHERE cliente_id = %s ORDER BY fecha, comprobante",
+                                (cliente_id,)).fetchall()
+        return [LineaCompra(f["fecha"], f["comprobante"], f["proveedor"], f["item_codigo"], f["cantidad"], f["costo_unitario"],
+                            str(f["id"])) for f in filas]
 
     def registrar_merma(self, cliente_id: str, merma) -> object:
         with self._con() as con:
