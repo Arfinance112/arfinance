@@ -217,6 +217,7 @@ button.kpi { cursor: pointer; }
 .opcion span { color: var(--c-muted); }
 .opcion:hover { border-color: var(--c-secondary); box-shadow: var(--shadow-hover); }
 .check { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.input-chico { width: 9rem; min-width: 0; padding: 4px 8px; font-size: 13px; text-transform: uppercase; }
 .campo-archivo { display: grid; gap: 6px; font-weight: 600; }
 .resumen-importacion { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); margin: 0; }
 .resumen-importacion div { background: var(--c-bg-alt); border-radius: 12px; padding: 10px 12px; }
