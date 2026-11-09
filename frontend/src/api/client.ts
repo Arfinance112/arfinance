@@ -20,6 +20,8 @@ import type {
   ImportacionPlanilla,
   CuentaContable,
   PlanCuentas,
+  MiembroOrg,
+  Rol,
   Yo,
 } from "../types/app";
 import type {
@@ -101,6 +103,12 @@ export const api = {
     if (cuenta) datos.append("cuenta", cuenta);
     return pedir<ResultadoSubida>(`/clientes/${id}/documentos`, { method: "POST", body: datos });
   },
+  miembros: () => pedir<{ roles: Rol[]; miembros: MiembroOrg[] }>("/organizacion/miembros"),
+  invitarMiembro: (email: string, rol: Rol) =>
+    pedir<{ email: string; mail_enviado: boolean }>("/organizacion/miembros", json({ email, rol })),
+  cambiarRol: (usuarioId: string, rol: Rol) =>
+    pedir<{ rol: Rol }>(`/organizacion/miembros/${usuarioId}`, { method: "PATCH", body: JSON.stringify({ rol }) }),
+  quitarMiembro: (usuarioId: string) => pedir<string>(`/organizacion/miembros/${usuarioId}`, { method: "DELETE" }),
   planCuentas: (id: string) => pedir<PlanCuentas>(`/clientes/${id}/plan-cuentas`),
   altaCuentaContable: (id: string, c: { codigo: string; nombre: string; imputable: boolean; padre: string | null; ajustable?: boolean; expuesta?: boolean }) =>
     pedir<CuentaContable>(`/clientes/${id}/plan-cuentas`, json(c)),
