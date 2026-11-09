@@ -11,7 +11,7 @@ from typing import Protocol
 
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
-from app.finanzas.items import Item, LineaVenta, Merma
+from app.finanzas.items import Item, LineaCompra, LineaVenta, Merma
 from app.finanzas.plan_cuentas import CuentaContable
 from app.finanzas.tablero import DatosCierre
 from app.ingesta.comprobantes_arca import ComprobanteArca
@@ -150,6 +150,8 @@ class Repositorio(Protocol):
     def guardar_item(self, cliente_id: str, item: Item) -> Item: ...
     def guardar_lineas_venta(self, cliente_id: str, documento_id: str, lineas: list[LineaVenta]) -> tuple[int, int]: ...
     def lineas_venta(self, cliente_id: str) -> list[LineaVenta]: ...
+    def guardar_lineas_compra(self, cliente_id: str, documento_id: str, lineas: list[LineaCompra]) -> tuple[int, int]: ...
+    def lineas_compra(self, cliente_id: str) -> list[LineaCompra]: ...
     def registrar_merma(self, cliente_id: str, merma: Merma) -> Merma: ...
     def mermas(self, cliente_id: str) -> list[Merma]: ...
     # tablero (fase 3)
@@ -192,6 +194,7 @@ class RepositorioMemoria:
         self._notas: dict[str, dict[tuple[str, date], str]] = {}
         self._items: dict[str, dict[str, Item]] = {}
         self._ventas: dict[str, dict[tuple, LineaVenta]] = {}
+        self._compras_item: dict[str, dict[tuple, LineaCompra]] = {}
         self._mermas: dict[str, list[Merma]] = {}
         self._cierres: dict[str, dict[date, DatosCierre]] = {}
         self._metas: dict[str, dict[str, tuple[Decimal | None, str]]] = {}
@@ -282,7 +285,7 @@ class RepositorioMemoria:
         if not doc:
             return
         for tipo, cliente, clave in self._origen.pop(documento_id, []):
-            {"comprobante": self._comps, "f931": self._f931, "venta": self._ventas}[tipo].get(cliente, {}).pop(clave, None)
+            {"comprobante": self._comps, "f931": self._f931, "venta": self._ventas, "compra": self._compras_item}[tipo].get(cliente, {}).pop(clave, None)
         if doc.lote_id:
             self._lotes.pop(doc.lote_id, None)
 
@@ -433,6 +436,21 @@ class RepositorioMemoria:
 
     def lineas_venta(self, cliente_id: str) -> list[LineaVenta]:
         return sorted(self._ventas.get(cliente_id, {}).values(), key=lambda l: (l.fecha, l.comprobante))
+
+    def guardar_lineas_compra(self, cliente_id: str, documento_id: str, lineas: list[LineaCompra]) -> tuple[int, int]:
+        actuales = self._compras_item.setdefault(cliente_id, {})
+        nuevas = 0
+        for l in lineas:
+            clave = (l.fecha, l.comprobante, l.proveedor, l.item, l.cantidad, l.costo_unitario)
+            if clave not in actuales:
+                l.id = uuid.uuid4().hex[:12]
+                actuales[clave] = l
+                self._anotar_origen(documento_id, "compra", cliente_id, clave)
+                nuevas += 1
+        return nuevas, len(lineas) - nuevas
+
+    def lineas_compra(self, cliente_id: str) -> list[LineaCompra]:
+        return sorted(self._compras_item.get(cliente_id, {}).values(), key=lambda l: (l.fecha, l.comprobante))
 
     def registrar_merma(self, cliente_id: str, merma: Merma) -> Merma:
         merma.id = uuid.uuid4().hex[:12]

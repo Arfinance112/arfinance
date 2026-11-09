@@ -28,7 +28,7 @@ from app.api.repositorio import ROLES, Cuenta, Documento, Lote, Repositorio, Rep
 from app.finanzas.asientos import construir_asientos
 from app.finanzas.flujo import flujo_mensual
 from app.finanzas.indices import FilaIndice, TablaIndices
-from app.finanzas.items import (Item, Merma, agrupar_mermas_por_causa, asientos_de_items, costos_fijos_del_periodo,
+from app.finanzas.items import (Item, Merma, stock_y_costo_real, agrupar_mermas_por_causa, asientos_de_items, costos_fijos_del_periodo,
                                 rentabilidad)
 from app.finanzas import plan_cuentas
 from app.finanzas.flujo import GRUPOS as GRUPOS_CF
@@ -726,9 +726,13 @@ class MermaIn(BaseModel):
 @app.get("/clientes/{cliente_id}/items")
 def listar_items(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
     _cliente_o_404(r, cliente_id, u)
-    vendidos = {l.item for l in r.lineas_venta(cliente_id)}
+    ventas = r.lineas_venta(cliente_id)
+    vendidos = {l.item for l in ventas}
     items = r.items(cliente_id)
-    return {"items": list(items.values()), "vendidos_sin_alta": sorted(vendidos - items.keys())}
+    filas_idx = r.indices()
+    stock = stock_y_costo_real(r.lineas_compra(cliente_id), ventas, r.mermas(cliente_id), items,
+                               TablaIndices(filas_idx) if filas_idx else None, date.today())
+    return {"items": list(items.values()), "vendidos_sin_alta": sorted(vendidos - items.keys()), "stock": stock}
 
 
 @app.put("/clientes/{cliente_id}/items/{codigo}")
@@ -1322,6 +1326,16 @@ def _registrar(r: Repositorio, cliente_id: str, nombre: str, contenido: bytes, s
                 "documento_id": doc.id, "sentido": sentido, "comprobantes": len(comps), "nuevos": nuevos,
                 "repetidos": repetidos, "recibidos_sin_rubro": sin_rubro,
                 "total": sum((c.total for c in comps), Decimal(0))}
+
+    if tipo == "detalle_compras":
+        lineas = detalle_ventas.leer_detalle_compras(leido.filas)
+        conocidos = r.items(cliente_id)
+        desconocidos = sorted({l.item for l in lineas if l.item not in conocidos})
+        doc = r.registrar_documento(Documento("", cliente_id, nombre, tipo, "con_alertas" if desconocidos else "procesado",
+                                              sha, len(contenido), ruta, detalle=f"{len(lineas)} renglones de compra"))
+        nuevas, repetidas = r.guardar_lineas_compra(cliente_id, doc.id, lineas)
+        return {"tipo": tipo, "estado": "con_alertas" if desconocidos else "procesado", "documento_id": doc.id,
+                "renglones": len(lineas), "nuevos": nuevas, "repetidos": repetidas, "items_desconocidos": desconocidos}
 
     if tipo == "detalle_ventas":
         lineas = detalle_ventas.leer_detalle_ventas(leido.filas)
