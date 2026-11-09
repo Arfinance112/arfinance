@@ -11,6 +11,7 @@ import { Control } from "./pantallas/Control";
 import { Presupuesto } from "./pantallas/Presupuesto";
 import { Indices } from "./pantallas/Indices";
 import { Items } from "./pantallas/Items";
+import { PlanCuentas } from "./pantallas/PlanCuentas";
 import { Rentabilidad } from "./pantallas/Rentabilidad";
 import { Resultados } from "./pantallas/Resultados";
 import { Cuentas } from "./pantallas/Cuentas";
@@ -27,6 +28,7 @@ const SECCIONES = [
   { clave: "comprobantes", texto: "Comprobantes" },
   { clave: "items", texto: "Ítems y mermas" },
   { clave: "cuentas", texto: "Cuentas" },
+  { clave: "plan", texto: "Plan de cuentas" },
   { clave: "tesoreria", texto: "Tesorería" },
   { clave: "flujo", texto: "Flujo de caja" },
   { clave: "resultados", texto: "Resultados" },
@@ -39,7 +41,8 @@ const BANDA: Record<string, [string, string]> = {
   clientes: ["Tus clientes", "Cada carpeta tiene sus cuentas, documentos y tableros."],
   tablero: ["Tablero", "Los indicadores del mes contra la meta, el mes anterior y el presupuesto, y la caja a 90 días."],
   documentos: ["Documentos", "Subí extractos, F.931 y comprobantes. Los extractos quedan listos para conciliar."],
-  cuentas: ["Cuentas", "Bancos, billeteras, cajas, procesadores y tarjetas del cliente, con su moneda."],
+  plan: ["Plan de cuentas", "Las cuentas contables del cliente y qué rubros de gestión se imputan a cada una."],
+  cuentas: ["Cuentas","Bancos, billeteras, cajas, procesadores y tarjetas del cliente, con su moneda."],
   tesoreria: ["Tesorería", "Saldos por cuenta y moneda, y todos los movimientos aprobados."],
   flujo: ["Flujo de caja", "Lo que entró y salió cada mes, por concepto."],
   comprobantes: ["Comprobantes", "Ventas y compras de Mis Comprobantes. Clasificá cada proveedor una sola vez."],
@@ -125,6 +128,7 @@ export default function App() {
         {ruta.pantalla === "cliente" && ruta.seccion === "control" && <Control clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "documentos" && <Documentos clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "cuentas" && <Cuentas clienteId={ruta.clienteId} />}
+        {ruta.pantalla === "cliente" && ruta.seccion === "plan" && <PlanCuentas clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "tesoreria" && <Tesoreria clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "flujo" && <Flujo clienteId={ruta.clienteId} />}
         {ruta.pantalla === "lote" && (
