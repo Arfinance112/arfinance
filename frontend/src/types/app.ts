@@ -82,9 +82,13 @@ export interface Comprobante {
   contraparte: string;
   neto_ars: number;
   rubro: string | null;
+  unidad_negocio: string | null;
+  centro_costo: string | null;
 }
 
 export interface Resultados {
+  unidades_negocio: string[];
+  centros_costo: string[];
   meses: string[];
   filas: Record<string, Record<string, number | null>>;
   /** línea → rubro → mes ISO (o "total") → importe */
