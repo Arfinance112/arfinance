@@ -11,7 +11,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -23,7 +23,8 @@ from pydantic import BaseModel, Field
 
 from app import seeds
 from app.api.auth import Usuario, es_admin_plataforma, usuario_actual, verificar_configuracion
-from app.api.repositorio import Cuenta, Documento, Lote, Repositorio, RepositorioMemoria
+from app.api import invitaciones
+from app.api.repositorio import ROLES, Cuenta, Documento, Lote, Repositorio, RepositorioMemoria
 from app.finanzas.asientos import construir_asientos
 from app.finanzas.flujo import flujo_mensual
 from app.finanzas.indices import FilaIndice, TablaIndices
@@ -48,8 +49,45 @@ from app.ingesta.reglas import MotorReglas
 PRODUCCION = os.environ.get("ENTORNO") == "produccion"
 _problemas_config = verificar_configuracion()      # en producción, si hay problemas, la API no arranca
 
+def repo() -> Repositorio:
+    return _repo
+
+
+def almacen() -> Almacenamiento:
+    return _almacen
+
+
+# ------------------------------------------------------------------ permisos por rol
+# Se aplica a TODO pedido que modifica algo (no a las lecturas: el acceso a cada cliente ya lo controla cada ruta).
+SOLO_ADMIN = ("/organizacion/",)
+PERMITIDO_A_CARGA = {
+    ("POST", "/clientes/{cliente_id}/documentos"), ("POST", "/documentos/{documento_id}/reprocesar"),
+    ("PATCH", "/lotes/{lote_id}/movimientos/{mov_id}"), ("POST", "/lotes/{lote_id}/aprobar"),
+    ("POST", "/clientes/{cliente_id}/reglas"), ("PATCH", "/clientes/{cliente_id}/comprobantes/{comprobante_id}"),
+    ("POST", "/clientes/{cliente_id}/mermas"),
+}
+LIBRE = {("POST", "/me/organizacion")}
+ROLES_TEXTO = {"lectura": "solo lectura", "carga": "carga de documentos", "consultor": "consultor"}
+
+
+def control_de_rol(request: Request, authorization: str | None = Header(default=None), r: Repositorio = Depends(repo)) -> None:
+    if request.method in ("GET", "HEAD", "OPTIONS"):
+        return
+    ruta = getattr(request.scope.get("route"), "path", request.url.path)
+    if (request.method, ruta) in LIBRE:
+        return
+    u = usuario_actual(authorization)
+    rol = r.rol_de(u.id)
+    if rol is None or rol == "admin":
+        return                                      # sin organización: cada ruta ya exige tenerla
+    if ruta.startswith(SOLO_ADMIN):
+        raise HTTPException(403, "Solo un administrador de la organización puede gestionar usuarios.")
+    if rol == "lectura" or (rol == "carga" and (request.method, ruta) not in PERMITIDO_A_CARGA):
+        raise HTTPException(403, f"Tu usuario es de {ROLES_TEXTO[rol]}: no puede hacer este cambio. Pedíselo a un administrador.")
+
+
 # en producción no se publica la documentación interactiva (mapa completo de la API)
-app = FastAPI(title="Gestión PyME – Ingesta y conciliación", version="0.4.0",
+app = FastAPI(title="Gestión PyME – Ingesta y conciliación", version="0.4.0", dependencies=[Depends(control_de_rol)],
               docs_url=None if PRODUCCION else "/docs", redoc_url=None, openapi_url=None if PRODUCCION else "/openapi.json")
 app.add_middleware(CORSMiddleware, allow_origins=os.environ.get("CORS_ORIGENES", "http://localhost:5173").split(","),
                    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"], allow_headers=["Authorization", "Content-Type", "X-Request-Id"],
@@ -79,14 +117,6 @@ def _crear_repo() -> Repositorio:
 
 _repo = _crear_repo()
 _almacen = crear_almacenamiento()
-
-
-def repo() -> Repositorio:
-    return _repo
-
-
-def almacen() -> Almacenamiento:
-    return _almacen
 
 
 instalar_observabilidad(app)
@@ -247,7 +277,81 @@ class OrganizacionIn(BaseModel):
 
 @app.get("/me")
 def yo(u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
-    return {"id": u.id, "email": u.email, "organizacion_id": r.organizacion_de(u.id)}
+    return {"id": u.id, "email": u.email, "organizacion_id": r.organizacion_de(u.id), "rol": r.rol_de(u.id)}
+
+
+# ------------------------------------------------------------------ usuarios de la organización
+class MiembroIn(BaseModel):
+    email: str = Field(pattern=r"^[^@\s]+@[^@\s]+\.[^@\s]+$", max_length=200)
+    rol: str = Field(pattern="^(admin|consultor|carga|lectura)$")
+
+
+class RolIn(BaseModel):
+    rol: str = Field(pattern="^(admin|consultor|carga|lectura)$")
+
+
+def _mi_organizacion(r: Repositorio, u: Usuario) -> str:
+    org = r.organizacion_de(u.id)
+    if not org:
+        raise HTTPException(403, "Primero creá tu organización: POST /me/organizacion")
+    return org
+
+
+def _miembro_o_404(r: Repositorio, org: str, usuario_id: str):
+    m = next((m for m in r.miembros(org) if m.usuario_id == usuario_id), None)
+    if not m:
+        raise HTTPException(404, "Ese usuario no es miembro de tu organización")
+    return m
+
+
+def _queda_admin(r: Repositorio, org: str, sin: str) -> bool:
+    return any(m.rol == "admin" and m.usuario_id != sin for m in r.miembros(org))
+
+
+@app.get("/organizacion/miembros")
+def listar_miembros(u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    org = _mi_organizacion(r, u)
+    return {"roles": list(ROLES), "miembros": [{"usuario_id": m.usuario_id, "email": m.email, "rol": m.rol, "vos": m.usuario_id == u.id}
+                                               for m in r.miembros(org)]}
+
+
+@app.post("/organizacion/miembros", status_code=201)
+def invitar_miembro(body: MiembroIn, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """Invita un email a la organización con un rol. Si no tiene cuenta, Supabase le manda el mail de invitación."""
+    org = _mi_organizacion(r, u)
+    email = body.email.strip().lower()
+    if any(m.email.lower() == email for m in r.miembros(org)):
+        raise HTTPException(409, f"{email} ya es miembro de la organización.")
+    try:
+        invitado = invitaciones.invitar(email)
+        r.agregar_miembro(org, invitado.usuario_id, email, body.rol)
+    except invitaciones.InvitacionFallida as e:
+        raise HTTPException(502, str(e))
+    except ValueError as e:
+        raise HTTPException(409, str(e))
+    log.info("miembro_invitado", extra={"rol": body.rol, "mail_enviado": invitado.mail_enviado})
+    return {"usuario_id": invitado.usuario_id, "email": email, "rol": body.rol, "mail_enviado": invitado.mail_enviado}
+
+
+@app.patch("/organizacion/miembros/{usuario_id}")
+def cambiar_rol_miembro(usuario_id: str, body: RolIn, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    org = _mi_organizacion(r, u)
+    m = _miembro_o_404(r, org, usuario_id)
+    if m.rol == "admin" and body.rol != "admin" and not _queda_admin(r, org, usuario_id):
+        raise HTTPException(409, "Es el único administrador: nombrá a otro antes de cambiarle el rol.")
+    r.cambiar_rol(org, usuario_id, body.rol)
+    return {"usuario_id": usuario_id, "rol": body.rol}
+
+
+@app.delete("/organizacion/miembros/{usuario_id}", status_code=204)
+def quitar_miembro(usuario_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """Saca al usuario de la organización (deja de ver sus clientes). Su cuenta de acceso no se borra."""
+    org = _mi_organizacion(r, u)
+    m = _miembro_o_404(r, org, usuario_id)
+    if m.rol == "admin" and not _queda_admin(r, org, usuario_id):
+        raise HTTPException(409, "Es el único administrador: la organización no puede quedarse sin administrador.")
+    r.quitar_miembro(org, usuario_id)
+    return Response(status_code=204)
 
 
 @app.post("/me/organizacion", status_code=201)

@@ -70,6 +70,16 @@ class Documento:
     subido_en: datetime = field(default_factory=datetime.now)
 
 
+ROLES = ("admin", "consultor", "carga", "lectura")
+
+
+@dataclass
+class Miembro:
+    usuario_id: str
+    email: str
+    rol: str
+
+
 MAX_INTENTOS = 3
 
 
@@ -93,6 +103,12 @@ class Repositorio(Protocol):
     def alta_usuario(self, usuario_id: str, email: str, organizacion: str) -> str: ...
     def organizacion_de(self, usuario_id: str) -> str | None: ...
     def puede_ver_cliente(self, usuario_id: str, cliente_id: str) -> bool: ...
+    # miembros de la organización y sus roles (admin | consultor | carga | lectura)
+    def rol_de(self, usuario_id: str) -> str | None: ...
+    def miembros(self, organizacion_id: str) -> list[Miembro]: ...
+    def agregar_miembro(self, organizacion_id: str, usuario_id: str, email: str, rol: str) -> None: ...
+    def cambiar_rol(self, organizacion_id: str, usuario_id: str, rol: str) -> None: ...
+    def quitar_miembro(self, organizacion_id: str, usuario_id: str) -> None: ...
     # clientes y maestros
     def crear_cliente(self, organizacion_id: str, nombre: str, cuit: str) -> Cliente: ...
     def clientes(self, usuario_id: str) -> list[Cliente]: ...
@@ -159,6 +175,8 @@ class RepositorioMemoria:
 
     def __init__(self) -> None:
         self._orgs: dict[str, str] = {}                    # usuario → organización
+        self._roles: dict[str, str] = {}                   # usuario → rol en su organización
+        self._emails: dict[str, str] = {}
         self._clientes: dict[str, Cliente] = {}
         self._cuentas: dict[str, dict[str, Cuenta]] = {}
         self._reglas: dict[str, list[Regla]] = {}
@@ -183,7 +201,30 @@ class RepositorioMemoria:
         self._lock = threading.Lock()
 
     def alta_usuario(self, usuario_id: str, email: str, organizacion: str) -> str:
+        if usuario_id not in self._orgs:
+            self._roles[usuario_id], self._emails[usuario_id] = "admin", email
         return self._orgs.setdefault(usuario_id, uuid.uuid4().hex[:12])
+
+    def rol_de(self, usuario_id: str) -> str | None:
+        return self._roles.get(usuario_id) if usuario_id in self._orgs else None
+
+    def miembros(self, organizacion_id: str) -> list[Miembro]:
+        return sorted((Miembro(u, self._emails.get(u, ""), self._roles.get(u, "lectura"))
+                       for u, o in self._orgs.items() if o == organizacion_id), key=lambda m: m.email)
+
+    def agregar_miembro(self, organizacion_id: str, usuario_id: str, email: str, rol: str) -> None:
+        if self._orgs.get(usuario_id, organizacion_id) != organizacion_id:
+            raise ValueError("Ese usuario ya pertenece a otra organización.")
+        self._orgs[usuario_id], self._roles[usuario_id], self._emails[usuario_id] = organizacion_id, rol, email
+
+    def cambiar_rol(self, organizacion_id: str, usuario_id: str, rol: str) -> None:
+        if self._orgs.get(usuario_id) == organizacion_id:
+            self._roles[usuario_id] = rol
+
+    def quitar_miembro(self, organizacion_id: str, usuario_id: str) -> None:
+        if self._orgs.get(usuario_id) == organizacion_id:
+            del self._orgs[usuario_id]
+            self._roles.pop(usuario_id, None)
 
     def organizacion_de(self, usuario_id: str) -> str | None:
         return self._orgs.get(usuario_id)
