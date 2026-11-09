@@ -33,6 +33,7 @@ class AsientoGestion:
     grupo_prime: str | None = None    # MATERIALES | PERSONAL | None
     unidad_negocio: str = "GENERAL"
     origen: str = ""                  # ventas | cmv | compras | tesoreria | personal | mermas
+    centro_costo: str = "GENERAL"
 
 
 def pyl_mensual(asientos: Iterable[AsientoGestion], meses: list[date],

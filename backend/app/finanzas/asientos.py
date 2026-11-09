@@ -37,6 +37,8 @@ class ComprobanteRegistrado:
     neto_ars: Decimal             # con signo: notas de crédito en negativo
     rubro: str | None = None
     total_ars: Decimal = CERO     # con IVA: para deudores, proveedores y días de cobro/pago
+    unidad_negocio: str | None = None
+    centro_costo: str | None = None
 
 
 @dataclass
@@ -76,21 +78,22 @@ def construir_asientos(*, comprobantes: Iterable[ComprobanteRegistrado], tesorer
     cubiertos: set[tuple[date, str]] = set()
     meses_con_ventas: set[date] = set()
 
-    def agregar(mes: date, rubro: str, importe: Decimal, origen: str) -> None:
+    def agregar(mes: date, rubro: str, importe: Decimal, origen: str, un: str | None = None, cc: str | None = None) -> None:
         r = rubros.get(rubro)
         if not r or r["linea_pl"] == "NO P&L":
             return
         asientos.append(AsientoGestion(mes=mes, rubro=rubro, linea_pl=r["linea_pl"], importe=importe,
-                                       grupo_prime=r.get("grupo_prime"), origen=origen))
+                                       grupo_prime=r.get("grupo_prime"), origen=origen,
+                                       unidad_negocio=un or "GENERAL", centro_costo=cc or "GENERAL"))
 
     for c in comprobantes:
         mes = c.fecha.replace(day=1)
         if c.sentido == "emitido":
             meses_con_ventas.add(mes)
-            agregar(mes, c.rubro or rubro_ventas, c.neto_ars, "ventas")
+            agregar(mes, c.rubro or rubro_ventas, c.neto_ars, "ventas", c.unidad_negocio, c.centro_costo)
         elif c.rubro:
             cubiertos.add((mes, c.rubro))
-            agregar(mes, c.rubro, -c.neto_ars, "compras")
+            agregar(mes, c.rubro, -c.neto_ars, "compras", c.unidad_negocio, c.centro_costo)
         else:
             avisos.compras_sin_rubro += 1
             avisos.importe_sin_rubro += c.neto_ars
@@ -114,7 +117,7 @@ def construir_asientos(*, comprobantes: Iterable[ComprobanteRegistrado], tesorer
         if tc is None:
             avisos.movimientos_sin_tc += 1
             continue
-        agregar(mes, m.rubro, m.importe_firmado * tc, "tesoreria")
+        agregar(mes, m.rubro, m.importe_firmado * tc, "tesoreria", m.unidad_negocio)
 
     meses_con_actividad = {a.mes for a in asientos} | meses_tesoreria
     avisos.meses_sin_ventas = sorted(m for m in meses_con_actividad if m not in meses_con_ventas)
