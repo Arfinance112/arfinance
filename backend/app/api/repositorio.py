@@ -12,6 +12,7 @@ from typing import Protocol
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
 from app.finanzas.items import Item, LineaVenta, Merma
+from app.finanzas.plan_cuentas import CuentaContable
 from app.finanzas.tablero import DatosCierre
 from app.ingesta.comprobantes_arca import ComprobanteArca
 from app.ingesta.f931 import DeclaracionF931
@@ -138,6 +139,13 @@ class Repositorio(Protocol):
     def guardar_cierre(self, cliente_id: str, cierre: DatosCierre) -> None: ...
     def metas(self, cliente_id: str) -> dict[str, tuple[Decimal | None, str]]: ...
     def guardar_meta(self, cliente_id: str, kpi: str, meta: Decimal | None, direccion: str) -> None: ...
+    # plan de cuentas contable y vínculo rubro → cuenta
+    def plan_cuentas(self, cliente_id: str) -> dict[str, CuentaContable]: ...
+    def iniciar_plan(self, cliente_id: str, cuentas: list[CuentaContable]) -> None: ...
+    def guardar_cuenta_contable(self, cliente_id: str, cuenta: CuentaContable) -> None: ...
+    def borrar_cuenta_contable(self, cliente_id: str, codigo: str) -> None: ...
+    def rubro_cuenta(self, cliente_id: str) -> dict[str, str]: ...
+    def vincular_rubro(self, cliente_id: str, rubro: str, cuenta: str | None) -> None: ...
     # cola de trabajos (fase 4a)
     def encolar(self, cliente_id: str, tipo: str, parametros: dict) -> Trabajo: ...
     def tomar_trabajo(self, worker: str) -> Trabajo | None: ...
@@ -170,6 +178,8 @@ class RepositorioMemoria:
         self._tesoreria: dict[str, list[MovimientoTesoreria]] = {}
         self._trabajos: dict[str, Trabajo] = {}
         self._origen: dict[str, list[tuple]] = {}           # documento → registros cargados desde él
+        self._plan: dict[str, dict[str, CuentaContable]] = {}
+        self._rubro_cuenta: dict[str, dict[str, str]] = {}
         self._lock = threading.Lock()
 
     def alta_usuario(self, usuario_id: str, email: str, organizacion: str) -> str:
@@ -376,6 +386,32 @@ class RepositorioMemoria:
 
     def mermas(self, cliente_id: str) -> list[Merma]:
         return sorted(self._mermas.get(cliente_id, []), key=lambda m: m.fecha)
+
+    # ------------------------------------------------------------------ plan de cuentas
+    def plan_cuentas(self, cliente_id: str) -> dict[str, CuentaContable]:
+        return dict(self._plan.get(cliente_id, {}))
+
+    def iniciar_plan(self, cliente_id: str, cuentas: list[CuentaContable]) -> None:
+        self._plan.setdefault(cliente_id, {}).update({c.codigo: c for c in cuentas})
+
+    def guardar_cuenta_contable(self, cliente_id: str, cuenta: CuentaContable) -> None:
+        self._plan.setdefault(cliente_id, {})[cuenta.codigo] = cuenta
+
+    def borrar_cuenta_contable(self, cliente_id: str, codigo: str) -> None:
+        self._plan.get(cliente_id, {}).pop(codigo, None)
+        vinculos = self._rubro_cuenta.get(cliente_id, {})
+        for rubro in [r for r, c in vinculos.items() if c == codigo]:
+            del vinculos[rubro]
+
+    def rubro_cuenta(self, cliente_id: str) -> dict[str, str]:
+        return dict(self._rubro_cuenta.get(cliente_id, {}))
+
+    def vincular_rubro(self, cliente_id: str, rubro: str, cuenta: str | None) -> None:
+        vinculos = self._rubro_cuenta.setdefault(cliente_id, {})
+        if cuenta is None:
+            vinculos.pop(rubro, None)
+        else:
+            vinculos[rubro] = cuenta
 
     # ------------------------------------------------------------------ tablero
     def cierres(self, cliente_id: str) -> dict[date, DatosCierre]:

@@ -29,6 +29,7 @@ from app.finanzas.flujo import flujo_mensual
 from app.finanzas.indices import FilaIndice, TablaIndices
 from app.finanzas.items import (Item, Merma, agrupar_mermas_por_causa, asientos_de_items, costos_fijos_del_periodo,
                                 rentabilidad)
+from app.finanzas import plan_cuentas
 from app.finanzas.flujo import GRUPOS as GRUPOS_CF
 from app.finanzas.kpis import proyeccion_caja, pyl_mensual
 from app.finanzas.tablero import KPIS, DatosCierre, EntradaMes, armar_tablero, fin_de_mes, kpis_del_mes, mes_anterior, pendientes_fifo
@@ -927,6 +928,129 @@ async def subir_documento(cliente_id: str, archivo: UploadFile = File(...), cuen
     t = r.encolar(cliente_id, "procesar_documento", parametros)
     return JSONResponse(status_code=202, content={"tipo": "en_cola", "trabajo_id": t.id, "estado": "pendiente",
                                                   "motivo": "ocr" if parametros.get("ocr") else "tamano"})
+
+
+# ------------------------------------------------------------------ plan de cuentas contable
+class CuentaContableIn(BaseModel):
+    codigo: str = Field(min_length=1, max_length=12)
+    nombre: str = Field(min_length=1, max_length=120)
+    imputable: bool = True
+    ajustable: bool = False
+    expuesta: bool = False
+    padre: str | None = None
+    clase: int | None = None          # por defecto, la de la agrupadora
+    comentario: str = ""
+
+
+class CuentaContableCambio(BaseModel):
+    nombre: str | None = Field(default=None, min_length=1, max_length=120)
+    imputable: bool | None = None
+    ajustable: bool | None = None
+    expuesta: bool | None = None
+    comentario: str | None = None
+
+
+class VinculoRubrosIn(BaseModel):
+    rubros: list[str]
+
+
+def _plan(r: Repositorio, cliente_id: str) -> dict:
+    """El plan del cliente; la primera vez se crea con la plantilla."""
+    plan = r.plan_cuentas(cliente_id)
+    if not plan:
+        r.iniciar_plan(cliente_id, plan_cuentas.desde_plantilla(seeds.plan_cuentas()))
+        plan = r.plan_cuentas(cliente_id)
+    return plan
+
+
+def _rubros_usados(r: Repositorio, cliente_id: str) -> set[str]:
+    asientos, _, _ = _asientos(r, cliente_id)
+    return {a.rubro for a in asientos} | {m.rubro for m in r.tesoreria(cliente_id)}
+
+
+@app.get("/clientes/{cliente_id}/plan-cuentas")
+def ver_plan_cuentas(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    plan, vinculos = _plan(r, cliente_id), r.rubro_cuenta(cliente_id)
+    en_uso = plan_cuentas.cuentas_en_uso(vinculos, _rubros_usados(r, cliente_id))
+    rubros_de: dict[str, list[str]] = {}
+    for rubro, cuenta in vinculos.items():
+        rubros_de.setdefault(cuenta, []).append(rubro)
+    cuentas = [{**c.como_dict(), "rubros": sorted(rubros_de.get(c.codigo, [])), "en_uso": c.codigo in en_uso,
+                "subcuentas": sum(1 for x in plan.values() if x.padre == c.codigo)}
+               for c in sorted(plan.values(), key=lambda c: c.codigo)]
+    sin_cuenta = sorted(set(seeds.rubros()) - set(vinculos))
+    return {"cuentas": cuentas, "rubros_sin_cuenta": sin_cuenta}
+
+
+@app.post("/clientes/{cliente_id}/plan-cuentas", status_code=201)
+def alta_cuenta_contable(cliente_id: str, body: CuentaContableIn, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    plan = _plan(r, cliente_id)
+    padre = plan.get(body.padre) if body.padre else None
+    clase = body.clase or (padre.clase if padre else int(body.codigo[0]) if body.codigo[0] in "12345" else 0)
+    nueva = plan_cuentas.CuentaContable(body.codigo.strip(), body.nombre.strip(), body.imputable, body.ajustable,
+                                        body.expuesta, clase, body.padre or None, body.comentario.strip())
+    try:
+        plan_cuentas.validar_alta(plan, nueva)
+    except plan_cuentas.PlanInvalido as e:
+        raise HTTPException(422, str(e))
+    r.guardar_cuenta_contable(cliente_id, nueva)
+    return nueva.como_dict()
+
+
+@app.patch("/clientes/{cliente_id}/plan-cuentas/{codigo}")
+def editar_cuenta_contable(cliente_id: str, codigo: str, body: CuentaContableCambio, u: Usuario = Depends(usuario_actual),
+                           r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    plan = _plan(r, cliente_id)
+    if codigo not in plan:
+        raise HTTPException(404, f"La cuenta {codigo} no existe")
+    cuenta = plan[codigo]
+    if body.imputable is not None and body.imputable != cuenta.imputable:
+        try:
+            plan_cuentas.validar_cambio_imputable(plan, codigo, body.imputable, codigo in r.rubro_cuenta(cliente_id).values())
+        except plan_cuentas.PlanInvalido as e:
+            raise HTTPException(422, str(e))
+    for campo, valor in body.model_dump(exclude_none=True).items():
+        setattr(cuenta, campo, valor.strip() if isinstance(valor, str) else valor)
+    r.guardar_cuenta_contable(cliente_id, cuenta)
+    return cuenta.como_dict()
+
+
+@app.delete("/clientes/{cliente_id}/plan-cuentas/{codigo}", status_code=204)
+def baja_cuenta_contable(cliente_id: str, codigo: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    plan = _plan(r, cliente_id)
+    en_uso = plan_cuentas.cuentas_en_uso(r.rubro_cuenta(cliente_id), _rubros_usados(r, cliente_id))
+    try:
+        plan_cuentas.validar_baja(plan, codigo, en_uso)
+    except plan_cuentas.PlanInvalido as e:
+        raise HTTPException(409 if "movimientos" in str(e) or "agrupa" in str(e) else 404, str(e))
+    r.borrar_cuenta_contable(cliente_id, codigo)
+    return Response(status_code=204)
+
+
+@app.put("/clientes/{cliente_id}/plan-cuentas/{codigo}/rubros")
+def vincular_rubros(cliente_id: str, codigo: str, body: VinculoRubrosIn, u: Usuario = Depends(usuario_actual),
+                    r: Repositorio = Depends(repo)):
+    """Los rubros que se imputan a esta cuenta. Un rubro va a una sola cuenta: si estaba en otra, se mueve."""
+    _cliente_o_404(r, cliente_id, u)
+    plan = _plan(r, cliente_id)
+    cuenta = plan.get(codigo)
+    if not cuenta:
+        raise HTTPException(404, f"La cuenta {codigo} no existe")
+    if not cuenta.imputable and body.rubros:
+        raise HTTPException(422, "Solo las cuentas imputables reciben rubros; esta es agrupadora.")
+    invalidos = [x for x in body.rubros if x not in seeds.rubros()]
+    if invalidos:
+        raise HTTPException(422, f"Rubros inexistentes: {', '.join(invalidos)}")
+    for rubro, actual in r.rubro_cuenta(cliente_id).items():
+        if actual == codigo and rubro not in body.rubros:
+            r.vincular_rubro(cliente_id, rubro, None)
+    for rubro in body.rubros:
+        r.vincular_rubro(cliente_id, rubro, codigo)
+    return {"cuenta": codigo, "rubros": sorted(body.rubros)}
 
 
 def _documento_o_404(r: Repositorio, documento_id: str, u: Usuario) -> Documento:
