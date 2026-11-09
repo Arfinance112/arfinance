@@ -1,10 +1,13 @@
 // Tipos de las pantallas de clientes, documentos y tesorería (espejo de backend/app/api/main.py).
 
+export type Rol = "admin" | "consultor" | "carga" | "lectura";
 export interface Yo {
   id: string;
   email: string;
   organizacion_id: string | null;
+  rol: Rol | null;
 }
+export interface MiembroOrg { usuario_id: string; email: string; rol: Rol; vos: boolean }
 
 export interface ClienteResumen {
   id: string;
