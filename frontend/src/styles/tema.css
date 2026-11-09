@@ -250,3 +250,10 @@ button.kpi { cursor: pointer; }
 .tabla-compacta td { padding: 4px 8px; font-size: 12px; white-space: nowrap; }
 .tabla-compacta .fila-encabezado td { font-weight: 700; color: var(--c-primary); background: var(--c-bg-alt); position: sticky; top: 0; }
 .link.peligro { color: var(--c-error); }
+
+/* plan de cuentas */
+.tabla.plan td.codigo { font-variant-numeric: tabular-nums; color: var(--c-muted); white-space: nowrap; }
+.tabla.plan tr.agrupadora td { font-weight: 700; color: var(--c-primary); background: var(--c-bg-alt); }
+.tabla.plan tr.edicion td { background: #FAFDFD; }
+.tabla.plan .chip { margin-left: 6px; font-size: 11px; }
+.rubros-celda { max-width: 280px; }
