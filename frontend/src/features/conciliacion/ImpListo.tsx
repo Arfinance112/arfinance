@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { ApiError, api } from "../../api/client";
+import { fecha } from "../../formato";
 import type { Alerta, Correccion, Lote, MovimientoPropuesto, Rubro, TipoMovimiento } from "../../types/conciliacion";
 import "./ImpListo.css";
 
@@ -58,7 +59,6 @@ export function ImpListo({ loteId }: { loteId: string }) {
   const [rubros, setRubros] = useState<Rubro[]>([]);
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [regla, setRegla] = useState<ReglaEnEdicion | null>(null);
-  const [incluirDuplicados, setIncluirDuplicados] = useState(false);
   const [mensaje, setMensaje] = useState<{ tipo: "ok" | "error"; texto: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
 
@@ -113,7 +113,7 @@ export function ImpListo({ loteId }: { loteId: string }) {
   async function aprobar() {
     setOcupado(true);
     try {
-      const r = await api.aprobar(loteId, incluirDuplicados);
+      const r = await api.aprobar(loteId);
       const dif = r.conciliacion.diferencia;
       avisar(
         `${r.insertados} movimientos cargados en Tesorería, ${r.omitidos} omitidos.` +
@@ -152,12 +152,33 @@ export function ImpListo({ loteId }: { loteId: string }) {
           </p>
         </div>
         {conc.saldo_extracto != null && (
-          <dl className={`conciliacion ${conc.diferencia === 0 ? "ok" : "dif"}`}>
-            <div><dt>Saldo según extracto</dt><dd>$ {pesos.format(conc.saldo_extracto)}</dd></div>
-            <div><dt>Saldo en el sistema después de aprobar</dt><dd>$ {pesos.format(conc.saldo_planilla_despues_de_aprobar ?? 0)}</dd></div>
-            <div><dt>Diferencia</dt><dd>{conc.diferencia === 0 ? "Conciliado" : `$ ${pesos.format(conc.diferencia ?? 0)}`}</dd></div>
-          </dl>
+          <table className={`conciliacion-saldos ${conc.diferencia === 0 ? "ok" : "dif"}`}>
+            <thead>
+              <tr><th /><th>Según extracto</th><th>Según el sistema</th><th>Diferencia</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>Saldo inicial{conc.fecha_inicial ? ` (${fecha(conc.fecha_inicial)})` : ""}</th>
+                <td>$ {pesos.format(conc.saldo_inicial_extracto ?? 0)}</td>
+                <td>$ {pesos.format(conc.saldo_inicial_sistema ?? 0)}</td>
+                <td className={conc.diferencia_inicial ? "dif" : "ok"}>
+                  {conc.diferencia_inicial ? `$ ${pesos.format(conc.diferencia_inicial)}` : "Coincide"}
+                </td>
+              </tr>
+              <tr>
+                <th>Saldo final{conc.fecha ? ` (${fecha(conc.fecha)})` : ""}</th>
+                <td>$ {pesos.format(conc.saldo_extracto)}</td>
+                <td>$ {pesos.format(conc.saldo_planilla_despues_de_aprobar ?? 0)}</td>
+                <td className={conc.diferencia ? "dif" : "ok"}>{conc.diferencia ? `$ ${pesos.format(conc.diferencia)}` : "Conciliado"}</td>
+              </tr>
+            </tbody>
+          </table>
         )}
+        {conc.diferencia_inicial ? (
+          <p className="aviso-saldos" role="status">
+            El saldo inicial no coincide: revisá el saldo inicial de la cuenta {lote.cuenta} en Cuentas, o si falta cargar un extracto anterior.
+          </p>
+        ) : null}
       </header>
 
       <nav className="filtros" aria-label="Filtrar movimientos">
@@ -285,10 +306,12 @@ export function ImpListo({ loteId }: { loteId: string }) {
       <footer className="pie">
         {editable ? (
           <>
-            <label className="check">
-              <input type="checkbox" checked={incluirDuplicados} onChange={(e) => setIncluirDuplicados(e.target.checked)} />
-              Cargar también los posibles duplicados
-            </label>
+            {resumen.duplicados > 0 && (
+              <span className="aviso">
+                {resumen.duplicados === 1 ? "1 movimiento duplicado no se va a cargar" : `${resumen.duplicados} movimientos duplicados no se van a cargar`}
+                {" "}(ya están en Tesorería).
+              </span>
+            )}
             <button type="button" className="btn btn-primario" disabled={ocupado || bloqueados > 0} onClick={() => void aprobar()}>
               Aprobar y pasar a Tesorería
             </button>
