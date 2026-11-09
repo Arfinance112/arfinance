@@ -32,3 +32,9 @@ def reglas_globales() -> list[Regla]:
 @lru_cache
 def entidades() -> list[dict]:
     return _json("entidades")
+
+
+@lru_cache
+def plan_cuentas() -> list[dict]:
+    """Plantilla de plan de cuentas con la que arranca cada cliente (tools/exportar_plan_cuentas.py)."""
+    return _json("plan_cuentas")
