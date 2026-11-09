@@ -34,11 +34,18 @@ export function Resultados({ clienteId }: { clienteId: string }) {
   const [res, setRes] = useState<ResultadosT | null>(null);
   const [rubroVentas, setRubroVentas] = useState("ING01");
   const [abiertas, setAbiertas] = useState<Set<string>>(new Set());
+  const [unidad, setUnidad] = useState("");
+  const [centro, setCentro] = useState("");
+  // las opciones salen del resultado sin filtrar, para no perderlas al filtrar
+  const [opciones, setOpciones] = useState<{ unidades: string[]; centros: string[] }>({ unidades: [], centros: [] });
 
   useEffect(() => {
     setRes(null);
-    void api.resultados(clienteId, rubroVentas).then(setRes);
-  }, [clienteId, rubroVentas]);
+    void api.resultados(clienteId, rubroVentas, unidad, centro).then((r) => {
+      setRes(r);
+      if (!unidad && !centro) setOpciones({ unidades: r.unidades_negocio ?? [], centros: r.centros_costo ?? [] });
+    });
+  }, [clienteId, rubroVentas, unidad, centro]);
 
   if (!res) return <p className="cargando">Calculando resultados…</p>;
 
@@ -68,6 +75,20 @@ export function Resultados({ clienteId }: { clienteId: string }) {
           <select value={rubroVentas} onChange={(e) => setRubroVentas(e.target.value)}>
             <option value="ING01">Venta de bienes</option>
             <option value="ING02">Venta de servicios</option>
+          </select>
+        </label>
+        <label>
+          Unidad de negocio
+          <select value={unidad} onChange={(e) => setUnidad(e.target.value)}>
+            <option value="">Todas</option>
+            {opciones.unidades.map((x) => <option key={x} value={x}>{x === "GENERAL" ? "Sin asignar (GENERAL)" : x}</option>)}
+          </select>
+        </label>
+        <label>
+          Centro de costo
+          <select value={centro} onChange={(e) => setCentro(e.target.value)}>
+            <option value="">Todos</option>
+            {opciones.centros.map((x) => <option key={x} value={x}>{x === "GENERAL" ? "Sin asignar (GENERAL)" : x}</option>)}
           </select>
         </label>
         <span className="sub">Importes en ARS, devengados. Hacé clic en una línea para ver el detalle por rubro.</span>

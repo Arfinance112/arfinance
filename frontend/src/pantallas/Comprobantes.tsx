@@ -32,8 +32,10 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
 
   async function asignar(c: Comprobante, rubro: string) {
     try {
-      const r = await api.asignarRubro(clienteId, c.id, rubro);
-      setMensaje(r.actualizados > 1
+      const esCompra = c.sentido === "recibido";
+      const r = await api.asignarRubro(clienteId, c.id, rubro, esCompra);
+      setMensaje(!esCompra ? `${c.comprobante}: rubro de venta asignado.`
+        : r.actualizados > 1
         ? `${c.contraparte}: rubro asignado a ${r.actualizados} comprobantes y recordado para los próximos.`
         : `${c.contraparte}: rubro asignado y recordado para los próximos.`);
       await cargar();
@@ -41,6 +43,37 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
       setMensaje(mensajeDeError(e));
     }
   }
+
+  const [mismoCuit, setMismoCuit] = useState(true);
+  // códigos ya usados en este cliente, para sugerirlos al escribir
+  const [usados, setUsados] = useState<{ un: string[]; cc: string[] }>({ un: [], cc: [] });
+  useEffect(() => {
+    void api.comprobantes(clienteId).then((todos) => setUsados({
+      un: [...new Set(todos.map((x) => x.unidad_negocio).filter((x): x is string => !!x))].sort(),
+      cc: [...new Set(todos.map((x) => x.centro_costo).filter((x): x is string => !!x))].sort(),
+    }));
+  }, [clienteId, comps]);
+
+  async function clasificar(c: Comprobante, campo: "unidad_negocio" | "centro_costo", valor: string) {
+    const nuevo = valor.trim().toUpperCase();
+    if (nuevo === (c[campo] ?? "")) return;
+    try {
+      const r = await api.clasificarComprobante(clienteId, c.id, { [campo]: nuevo }, mismoCuit);
+      const que = campo === "unidad_negocio" ? "Unidad de negocio" : "Centro de costo";
+      setMensaje(`${que} ${nuevo || "quitada"}: ${r.actualizados} comprobante${r.actualizados === 1 ? "" : "s"} de ${c.contraparte}.`);
+      await cargar();
+    } catch (e) {
+      setMensaje(mensajeDeError(e));
+    }
+  }
+
+  const campoDim = (c: Comprobante, campo: "unidad_negocio" | "centro_costo") => (
+    <input key={`${c.id}-${campo}-${c[campo] ?? ""}`} className="input-chico" defaultValue={c[campo] ?? ""}
+      list={campo === "unidad_negocio" ? "lista-un" : "lista-cc"} placeholder="GENERAL" maxLength={40}
+      aria-label={`${campo === "unidad_negocio" ? "Unidad de negocio" : "Centro de costo"} de ${c.comprobante}`}
+      onBlur={(e) => void clasificar(c, campo, e.target.value)}
+      onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }} />
+  );
 
   return (
     <div className="pila">
@@ -60,6 +93,12 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
           <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)}
             placeholder={sentido === "recibido" ? "Proveedor, CUIT, número o rubro" : "Cliente, CUIT o número"} />
         </label>
+        <label className="check" title="Al cambiar unidad de negocio o centro de costo, aplicarlo a todos los comprobantes del mismo CUIT">
+          <input type="checkbox" checked={mismoCuit} onChange={(e) => setMismoCuit(e.target.checked)} />
+          Unidad y centro: a todo el CUIT
+        </label>
+        <datalist id="lista-un">{usados.un.map((x) => <option key={x} value={x} />)}</datalist>
+        <datalist id="lista-cc">{usados.cc.map((x) => <option key={x} value={x} />)}</datalist>
         <span className="sub">{visibles.length}{buscar ? ` de ${comps.length}` : ""} comprobantes · neto ARS {importe(total)}</span>
       </div>
       <p role="status" aria-live="polite" className="mensaje ok">{mensaje}</p>
@@ -67,11 +106,11 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
       <div className="tabla-scroll">
         <table className="tabla">
           <thead>
-            <tr><th>Fecha</th><th>Comprobante</th><th>{sentido === "recibido" ? "Proveedor" : "Cliente"}</th><th>CUIT</th><th className="num">Neto ARS</th>{sentido === "recibido" && <th>Rubro</th>}</tr>
+            <tr><th>Fecha</th><th>Comprobante</th><th>{sentido === "recibido" ? "Proveedor" : "Cliente"}</th><th>CUIT</th><th className="num">Neto ARS</th><th>Rubro</th><th>Unidad de negocio</th><th>Centro de costo</th></tr>
           </thead>
           <tbody>
             {visibles.length === 0 && (
-              <tr><td colSpan={6} className="vacio">
+              <tr><td colSpan={8} className="vacio">
                 {buscar ? "Ningún comprobante coincide con la búsqueda."
                   : sentido === "recibido" && soloSinRubro ? "Todas las compras están clasificadas." : "No hay comprobantes. Subí Mis Comprobantes en Documentos."}
               </td></tr>
@@ -83,14 +122,15 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
                 <td>{c.contraparte}</td>
                 <td>{c.cuit}</td>
                 <td className={`num${Number(c.neto_ars) < 0 ? " negativo" : ""}`}>{importe(Number(c.neto_ars))}</td>
-                {sentido === "recibido" && (
-                  <td>
-                    <select aria-label={`Rubro de ${c.contraparte}`} value={c.rubro ?? ""} onChange={(e) => e.target.value && void asignar(c, e.target.value)}>
-                      <option value="">— elegir —</option>
-                      {rubros.map((r) => <option key={r.codigo} value={r.codigo}>{r.codigo} · {r.nombre}</option>)}
-                    </select>
-                  </td>
-                )}
+                <td>
+                  <select aria-label={`Rubro de ${c.contraparte}`} value={c.rubro ?? ""} onChange={(e) => e.target.value && void asignar(c, e.target.value)}>
+                    <option value="">{sentido === "emitido" ? "— ventas (por defecto) —" : "— elegir —"}</option>
+                    {rubros.filter((r) => sentido === "recibido" || r.codigo.startsWith("ING"))
+                      .map((r) => <option key={r.codigo} value={r.codigo}>{r.codigo} · {r.nombre}</option>)}
+                  </select>
+                </td>
+                <td>{campoDim(c, "unidad_negocio")}</td>
+                <td>{campoDim(c, "centro_costo")}</td>
               </tr>
             ))}
           </tbody>
