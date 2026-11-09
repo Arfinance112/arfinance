@@ -476,8 +476,10 @@ def flujo_de_caja(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repo
 
 # ------------------------------------------------------------------ devengado (fase 2a)
 class AsignacionRubroIn(BaseModel):
-    rubro: str
-    recordar: bool = True          # aplicar a todas las facturas de ese proveedor, actuales y futuras
+    rubro: str | None = None
+    recordar: bool = True          # aplicar a todas las facturas de ese CUIT (el rubro de proveedor, también a las futuras)
+    unidad_negocio: str | None = Field(default=None, max_length=40)
+    centro_costo: str | None = Field(default=None, max_length=40)
 
 
 class IndiceIn(BaseModel):
@@ -497,12 +499,26 @@ def listar_comprobantes(cliente_id: str, sentido: str | None = None, sin_rubro: 
 @app.patch("/clientes/{cliente_id}/comprobantes/{comprobante_id}")
 def asignar_rubro_comprobante(cliente_id: str, comprobante_id: str, body: AsignacionRubroIn,
                               u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """Clasifica un comprobante: rubro, unidad de negocio y centro de costo (solo cambia lo que viene en el pedido)."""
     _cliente_o_404(r, cliente_id, u)
-    if body.rubro not in seeds.rubros():
-        raise HTTPException(422, f"Rubro {body.rubro} inexistente")
-    n = r.asignar_rubro(cliente_id, comprobante_id, body.rubro, body.recordar)
-    if n == 0:
-        raise HTTPException(404, "Comprobante inexistente")
+    dims = {"unidad_negocio", "centro_costo"} & body.model_fields_set
+    if body.rubro is None and not dims:
+        raise HTTPException(422, "Indicá rubro, unidad de negocio o centro de costo")
+    n = 0
+    if body.rubro is not None:
+        if body.rubro not in seeds.rubros():
+            raise HTTPException(422, f"Rubro {body.rubro} inexistente")
+        n = r.asignar_rubro(cliente_id, comprobante_id, body.rubro, body.recordar)
+        if n == 0:
+            raise HTTPException(404, "Comprobante inexistente")
+    if dims:
+        actual = next((c for c in r.comprobantes(cliente_id) if c.id == comprobante_id), None)
+        if not actual:
+            raise HTTPException(404, "Comprobante inexistente")
+        limpio = lambda v: (v or "").strip().upper() or None
+        un = limpio(body.unidad_negocio) if "unidad_negocio" in dims else actual.unidad_negocio
+        cc = limpio(body.centro_costo) if "centro_costo" in dims else actual.centro_costo
+        n = max(n, r.clasificar_comprobante(cliente_id, comprobante_id, un, cc, body.recordar))
     return {"actualizados": n}
 
 
@@ -543,11 +559,18 @@ def _asientos(r: Repositorio, cliente_id: str, rubro_ventas: str = "ING01"):
 
 
 @app.get("/clientes/{cliente_id}/resultados")
-def resultados(cliente_id: str, rubro_ventas: str = "ING01", u: Usuario = Depends(usuario_actual),
-               r: Repositorio = Depends(repo)):
-    """P&L de gestión mensual en ARS (devengado), con prime cost y avisos de datos faltantes."""
+def resultados(cliente_id: str, rubro_ventas: str = "ING01", unidad_negocio: str | None = None,
+               centro_costo: str | None = None, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """P&L de gestión mensual en ARS (devengado), con prime cost y avisos de datos faltantes.
+    Se puede abrir por unidad de negocio y por centro de costo ("GENERAL" = lo que no tiene asignado)."""
     _cliente_o_404(r, cliente_id, u)
     asientos, avisos, _ = _asientos(r, cliente_id, rubro_ventas)
+    unidades = sorted({a.unidad_negocio for a in asientos})
+    centros = sorted({a.centro_costo for a in asientos})
+    if unidad_negocio:
+        asientos = [a for a in asientos if a.unidad_negocio == unidad_negocio.upper()]
+    if centro_costo:
+        asientos = [a for a in asientos if a.centro_costo == centro_costo.upper()]
     meses = sorted({a.mes for a in asientos})
     # la amortización no sale de los registros: se carga en los datos de cierre (Balance_Gestion)
     pyl = pyl_mensual(asientos, meses, {m: c.amortizacion_mes for m, c in r.cierres(cliente_id).items()})
@@ -560,7 +583,8 @@ def resultados(cliente_id: str, rubro_ventas: str = "ING01", u: Usuario = Depend
             serie[k] = serie.get(k, Decimal(0)) + a.importe
     return {"meses": [m.isoformat() for m in meses],
             "filas": {k: {m.isoformat(): v for m, v in serie.items()} for k, serie in pyl.items()},
-            "detalle_por_linea": detalle, "avisos": avisos.lista()}
+            "detalle_por_linea": detalle, "avisos": avisos.lista(),
+            "unidades_negocio": unidades, "centros_costo": centros}
 
 
 # ------------------------------------------------------------------ presupuesto y control (fase 2b)

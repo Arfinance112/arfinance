@@ -134,6 +134,8 @@ class Repositorio(Protocol):
     def guardar_comprobantes(self, cliente_id: str, documento_id: str, comps: list[ComprobanteArca]) -> tuple[int, int]: ...
     def comprobantes(self, cliente_id: str, sentido: str | None = None, sin_rubro: bool = False) -> list[ComprobanteRegistrado]: ...
     def asignar_rubro(self, cliente_id: str, comprobante_id: str, rubro: str, recordar: bool) -> int: ...
+    def clasificar_comprobante(self, cliente_id: str, comprobante_id: str, unidad_negocio: str | None,
+                               centro_costo: str | None, mismo_cuit: bool) -> int: ...
     def guardar_f931(self, cliente_id: str, documento_id: str, dj: DeclaracionF931) -> None: ...
     def costos_laborales(self, cliente_id: str) -> list[CostoLaboral]: ...
     def indices(self) -> list[FilaIndice]: ...
@@ -358,6 +360,18 @@ class RepositorioMemoria:
         for c in otros:
             c.rubro = rubro
         return 1 + len(otros)
+
+    def clasificar_comprobante(self, cliente_id: str, comprobante_id: str, unidad_negocio: str | None,
+                               centro_costo: str | None, mismo_cuit: bool) -> int:
+        """Unidad de negocio y centro de costo; con mismo_cuit, también a los del mismo sentido y CUIT."""
+        objetivo = next((c for c in self._comps.get(cliente_id, {}).values() if c.id == comprobante_id), None)
+        if not objetivo:
+            return 0
+        destino = [c for c in self._comps[cliente_id].values()
+                   if c is objetivo or (mismo_cuit and c.sentido == objetivo.sentido and c.cuit == objetivo.cuit)]
+        for c in destino:
+            c.unidad_negocio, c.centro_costo = unidad_negocio, centro_costo
+        return len(destino)
 
     def guardar_f931(self, cliente_id: str, documento_id: str, dj: DeclaracionF931) -> None:
         self._f931.setdefault(cliente_id, {})[dj.periodo] = CostoLaboral(
