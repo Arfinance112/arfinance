@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { api } from "../api/client";
 import { fecha, importe, moneda } from "../formato";
-import type { MovimientoTesoreria, Saldo } from "../types/app";
+import type { CuentaContable, MovimientoTesoreria, Saldo } from "../types/app";
 
 /** Saldos por cuenta y moneda + grilla de Tesorería con filtros. */
 export function Tesoreria({ clienteId }: { clienteId: string }) {
@@ -18,7 +18,16 @@ export function Tesoreria({ clienteId }: { clienteId: string }) {
     void api.saldos(clienteId).then(setSaldos);
     void api.tesoreria(clienteId).then(setMovs);
     void api.rubros().then((r) => setNombres(Object.fromEntries(r.map((x) => [x.codigo, x.nombre]))));
+    void api.planCuentas(clienteId).then((p) => setContables(p.cuentas.filter((c) => c.rubros.length > 0))).catch(() => setContables([]));
   }, [clienteId]);
+  const [contables, setContables] = useState<CuentaContable[]>([]);
+  const [contable, setContable] = useState("");
+  const rubrosDeContable = useMemo(() => new Set(contables.find((c) => c.codigo === contable)?.rubros ?? []), [contables, contable]);
+  const contableDe = useMemo(() => {
+    const m = new Map<string, string>();
+    contables.forEach((c) => c.rubros.forEach((r) => m.set(r, c.codigo)));
+    return m;
+  }, [contables]);
 
   // solo los rubros que aparecen en los movimientos, para no llenar la lista de opciones vacías
   const rubrosUsados = useMemo(() => [...new Set(movs.map((m) => m.rubro))].sort(), [movs]);
@@ -33,9 +42,10 @@ export function Tesoreria({ clienteId }: { clienteId: string }) {
     const q = buscar.trim().toUpperCase();
     return movs
       .filter((m) => (!cuenta || m.cuenta === cuenta) && (!rubro || m.rubro === rubro) && (!tipo || m.tipo === tipo)
+        && (!contable || rubrosDeContable.has(m.rubro))
         && (!q || `${m.descripcion} ${m.rubro} ${nombres[m.rubro] ?? ""} ${m.comprobante ?? ""}`.toUpperCase().includes(q)))
       .sort((a, b) => b.fecha.localeCompare(a.fecha));
-  }, [movs, cuenta, rubro, tipo, buscar, nombres]);
+  }, [movs, cuenta, rubro, tipo, buscar, nombres, contable, rubrosDeContable]);
   const totales = useMemo(() => visibles.reduce((t, m) => {
     if (m.tipo === "Ingreso") t.ingresos += Number(m.importe); else t.egresos += Number(m.importe);
     return t;
@@ -82,6 +92,14 @@ export function Tesoreria({ clienteId }: { clienteId: string }) {
           </select>
         </label>
         <label>
+          Cuenta contable
+          <select value={contable} onChange={(e) => setContable(e.target.value)}
+            title={contables.length ? "" : "Vinculá rubros a cuentas en Plan de cuentas para filtrar por cuenta contable"}>
+            <option value="">{contables.length ? "Todas" : "Sin rubros vinculados"}</option>
+            {contables.map((c) => <option key={c.codigo} value={c.codigo}>{c.codigo} · {c.nombre}</option>)}
+          </select>
+        </label>
+        <label>
           Tipo
           <select value={tipo} onChange={(e) => setTipo(e.target.value)}>
             <option value="">Ingresos y egresos</option>
@@ -89,8 +107,8 @@ export function Tesoreria({ clienteId }: { clienteId: string }) {
             <option value="Egreso">Solo egresos</option>
           </select>
         </label>
-        {(cuenta || rubro || tipo || buscar) && (
-          <button type="button" className="link" onClick={() => { setCuenta(""); setRubro(""); setTipo(""); setBuscar(""); }}>Limpiar filtros</button>
+        {(cuenta || rubro || tipo || buscar || contable) && (
+          <button type="button" className="link" onClick={() => { setCuenta(""); setRubro(""); setTipo(""); setBuscar(""); setContable(""); }}>Limpiar filtros</button>
         )}
         <span className="sub">{visibles.length} movimientos · ingresos {importe(totales.ingresos)} · egresos {importe(totales.egresos)}</span>
       </div>
@@ -107,7 +125,9 @@ export function Tesoreria({ clienteId }: { clienteId: string }) {
                 <td>{fecha(m.fecha)}</td>
                 <td>{m.cuenta}</td>
                 <td>{m.descripcion}</td>
-                <td title={nombres[m.rubro]}>{m.rubro}{nombres[m.rubro] ? ` · ${nombres[m.rubro]}` : ""}</td>
+                <td title={contableDe.get(m.rubro) ? `Cuenta contable ${contableDe.get(m.rubro)}` : nombres[m.rubro]}>
+                  {m.rubro}{nombres[m.rubro] ? ` · ${nombres[m.rubro]}` : ""}
+                </td>
                 <td>{m.comprobante ?? ""}</td>
                 <td className="num ingreso">{m.tipo === "Ingreso" ? `${monedaDe(m.cuenta)} ${importe(Number(m.importe))}` : ""}</td>
                 <td className="num egreso">{m.tipo === "Egreso" ? `${monedaDe(m.cuenta)} ${importe(Number(m.importe))}` : ""}</td>
