@@ -140,7 +140,11 @@ export const api = {
     pedir<Comprobante[]>(`/clientes/${id}/comprobantes?${new URLSearchParams({ ...(sentido ? { sentido } : {}), sin_rubro: String(sinRubro) })}`),
   asignarRubro: (id: string, comprobanteId: string, rubro: string, recordar = true) =>
     pedir<{ actualizados: number }>(`/clientes/${id}/comprobantes/${comprobanteId}`, { method: "PATCH", body: JSON.stringify({ rubro, recordar }) }),
-  resultados: (id: string, rubroVentas = "ING01") => pedir<Resultados>(`/clientes/${id}/resultados?rubro_ventas=${rubroVentas}`),
+  clasificarComprobante: (id: string, comprobanteId: string, cambios: { unidad_negocio?: string; centro_costo?: string }, mismoCuit: boolean) =>
+    pedir<{ actualizados: number }>(`/clientes/${id}/comprobantes/${comprobanteId}`, { method: "PATCH", body: JSON.stringify({ ...cambios, recordar: mismoCuit }) }),
+  resultados: (id: string, rubroVentas = "ING01", unidad = "", centro = "") =>
+    pedir<Resultados>(`/clientes/${id}/resultados?${new URLSearchParams({ rubro_ventas: rubroVentas,
+      ...(unidad ? { unidad_negocio: unidad } : {}), ...(centro ? { centro_costo: centro } : {}) })}`),
   indices: () => pedir<FilaIndice[]>("/indices"),
   guardarIndice: (mes: string, datos: { ipc?: number | null; cct?: number | null; tarifa?: number | null; tc: Record<string, number> }) =>
     pedir<{ mes: string }>(`/indices/${mes}`, { method: "PUT", body: JSON.stringify(datos) }),
