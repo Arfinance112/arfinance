@@ -14,7 +14,7 @@ from decimal import Decimal
 import psycopg
 from psycopg.rows import dict_row
 
-from app.api.repositorio import MAX_INTENTOS, Cliente, Cuenta, Documento, Lote, Trabajo
+from app.api.repositorio import MAX_INTENTOS, Cliente, Cuenta, Documento, Lote, Miembro, Trabajo
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
 from app.finanzas.items import Item, LineaVenta, Merma
@@ -69,6 +69,39 @@ class RepositorioPostgres:
         with self._con() as con:
             f = con.execute("SELECT organizacion_id FROM miembros WHERE usuario_id = %s ORDER BY id LIMIT 1", (usuario_id,)).fetchone()
         return str(f["organizacion_id"]) if f else None
+
+    def rol_de(self, usuario_id: str) -> str | None:
+        if not _es_uuid(usuario_id):
+            return None
+        with self._con() as con:
+            f = con.execute("SELECT rol::text AS rol FROM miembros WHERE usuario_id = %s ORDER BY id LIMIT 1", (usuario_id,)).fetchone()
+        return f["rol"] if f else None
+
+    def miembros(self, organizacion_id: str) -> list[Miembro]:
+        with self._con() as con:
+            filas = con.execute("""SELECT m.usuario_id, u.email, m.rol::text AS rol FROM miembros m JOIN usuarios u ON u.id = m.usuario_id
+                                   WHERE m.organizacion_id = %s AND m.cliente_id IS NULL ORDER BY u.email""", (organizacion_id,)).fetchall()
+        return [Miembro(str(f["usuario_id"]), f["email"], f["rol"]) for f in filas]
+
+    def agregar_miembro(self, organizacion_id: str, usuario_id: str, email: str, rol: str) -> None:
+        with self._con() as con, con.transaction():
+            otra = con.execute("SELECT organizacion_id FROM miembros WHERE usuario_id = %s AND organizacion_id <> %s LIMIT 1",
+                               (usuario_id, organizacion_id)).fetchone()
+            if otra:
+                raise ValueError("Ese usuario ya pertenece a otra organización.")
+            con.execute("INSERT INTO usuarios (id, email) VALUES (%s, %s) ON CONFLICT (id) DO UPDATE SET email = EXCLUDED.email",
+                        (usuario_id, email))
+            con.execute("""INSERT INTO miembros (usuario_id, organizacion_id, cliente_id, rol) VALUES (%s, %s, NULL, %s)
+                           ON CONFLICT (usuario_id, organizacion_id, cliente_id) DO UPDATE SET rol = EXCLUDED.rol""",
+                        (usuario_id, organizacion_id, rol))
+
+    def cambiar_rol(self, organizacion_id: str, usuario_id: str, rol: str) -> None:
+        with self._con() as con:
+            con.execute("UPDATE miembros SET rol = %s WHERE organizacion_id = %s AND usuario_id = %s", (rol, organizacion_id, usuario_id))
+
+    def quitar_miembro(self, organizacion_id: str, usuario_id: str) -> None:
+        with self._con() as con:
+            con.execute("DELETE FROM miembros WHERE organizacion_id = %s AND usuario_id = %s", (organizacion_id, usuario_id))
 
     def puede_ver_cliente(self, usuario_id: str, cliente_id: str) -> bool:
         if not (_es_uuid(usuario_id) and _es_uuid(cliente_id)):
