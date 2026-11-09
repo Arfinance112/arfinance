@@ -18,6 +18,8 @@ import type {
   Tablero,
   Cierre,
   ImportacionPlanilla,
+  CuentaContable,
+  PlanCuentas,
   Yo,
 } from "../types/app";
 import type {
@@ -99,6 +101,14 @@ export const api = {
     if (cuenta) datos.append("cuenta", cuenta);
     return pedir<ResultadoSubida>(`/clientes/${id}/documentos`, { method: "POST", body: datos });
   },
+  planCuentas: (id: string) => pedir<PlanCuentas>(`/clientes/${id}/plan-cuentas`),
+  altaCuentaContable: (id: string, c: { codigo: string; nombre: string; imputable: boolean; padre: string | null; ajustable?: boolean; expuesta?: boolean }) =>
+    pedir<CuentaContable>(`/clientes/${id}/plan-cuentas`, json(c)),
+  editarCuentaContable: (id: string, codigo: string, cambio: Partial<Pick<CuentaContable, "nombre" | "imputable" | "ajustable" | "expuesta" | "comentario">>) =>
+    pedir<CuentaContable>(`/clientes/${id}/plan-cuentas/${codigo}`, { method: "PATCH", body: JSON.stringify(cambio) }),
+  bajaCuentaContable: (id: string, codigo: string) => pedir<string>(`/clientes/${id}/plan-cuentas/${codigo}`, { method: "DELETE" }),
+  vincularRubros: (id: string, codigo: string, rubros: string[]) =>
+    pedir<{ rubros: string[] }>(`/clientes/${id}/plan-cuentas/${codigo}/rubros`, { method: "PUT", body: JSON.stringify({ rubros }) }),
   vistaDocumento: (id: string) => pedir<VistaDocumento>(`/documentos/${id}/vista`),
   eliminarDocumento: (id: string) => pedir<string>(`/documentos/${id}`, { method: "DELETE" }),
   /** Abre el original en una pestaña nueva (va con el token de sesión, por eso no alcanza un enlace común). */
