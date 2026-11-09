@@ -18,6 +18,7 @@ from app.api.repositorio import MAX_INTENTOS, Cliente, Cuenta, Documento, Lote, 
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
 from app.finanzas.items import Item, LineaVenta, Merma
+from app.finanzas.plan_cuentas import CuentaContable
 from app.finanzas.tablero import DatosCierre
 from app.ingesta.comprobantes_arca import ComprobanteArca
 from app.ingesta.f931 import DeclaracionF931
@@ -498,6 +499,49 @@ class RepositorioPostgres:
             con.execute("""INSERT INTO metas_tablero (cliente_id, kpi, meta, direccion) VALUES (%s, %s, %s, %s)
                            ON CONFLICT (cliente_id, kpi) DO UPDATE SET meta = EXCLUDED.meta, direccion = EXCLUDED.direccion""",
                         (cliente_id, kpi, meta, direccion))
+
+    # ------------------------------------------------------------ plan de cuentas
+    def plan_cuentas(self, cliente_id: str) -> dict:
+        with self._con() as con:
+            filas = con.execute("""SELECT codigo, nombre, imputable, ajustable, expuesta, clase, padre, comentario
+                                   FROM plan_cuentas WHERE cliente_id = %s""", (cliente_id,)).fetchall()
+        return {f["codigo"]: CuentaContable(**f) for f in filas}
+
+    def iniciar_plan(self, cliente_id: str, cuentas: list) -> None:
+        # las agrupadoras antes que sus subcuentas (la clave foránea a padre lo exige)
+        por_codigo = {c.codigo: c for c in cuentas}
+        def nivel(c, n=0):
+            return n if not c.padre or c.padre not in por_codigo else nivel(por_codigo[c.padre], n + 1)
+        with self._con() as con, con.transaction(), con.cursor() as cur:
+            cur.executemany("""INSERT INTO plan_cuentas (cliente_id, codigo, nombre, imputable, ajustable, expuesta, clase, padre, comentario)
+                               VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                            [(cliente_id, c.codigo, c.nombre, c.imputable, c.ajustable, c.expuesta, c.clase, c.padre, c.comentario)
+                             for c in sorted(cuentas, key=nivel)])
+
+    def guardar_cuenta_contable(self, cliente_id: str, c) -> None:
+        with self._con() as con:
+            con.execute("""INSERT INTO plan_cuentas (cliente_id, codigo, nombre, imputable, ajustable, expuesta, clase, padre, comentario)
+                           VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                           ON CONFLICT (cliente_id, codigo) DO UPDATE SET nombre = EXCLUDED.nombre, imputable = EXCLUDED.imputable,
+                               ajustable = EXCLUDED.ajustable, expuesta = EXCLUDED.expuesta, comentario = EXCLUDED.comentario""",
+                        (cliente_id, c.codigo, c.nombre, c.imputable, c.ajustable, c.expuesta, c.clase, c.padre, c.comentario))
+
+    def borrar_cuenta_contable(self, cliente_id: str, codigo: str) -> None:
+        with self._con() as con:
+            con.execute("DELETE FROM plan_cuentas WHERE cliente_id = %s AND codigo = %s", (cliente_id, codigo))
+
+    def rubro_cuenta(self, cliente_id: str) -> dict[str, str]:
+        with self._con() as con:
+            filas = con.execute("SELECT rubro, cuenta FROM rubro_cuenta WHERE cliente_id = %s", (cliente_id,)).fetchall()
+        return {f["rubro"]: f["cuenta"] for f in filas}
+
+    def vincular_rubro(self, cliente_id: str, rubro: str, cuenta: str | None) -> None:
+        with self._con() as con:
+            if cuenta is None:
+                con.execute("DELETE FROM rubro_cuenta WHERE cliente_id = %s AND rubro = %s", (cliente_id, rubro))
+            else:
+                con.execute("""INSERT INTO rubro_cuenta (cliente_id, rubro, cuenta) VALUES (%s, %s, %s)
+                               ON CONFLICT (cliente_id, rubro) DO UPDATE SET cuenta = EXCLUDED.cuenta""", (cliente_id, rubro, cuenta))
 
     # ------------------------------------------------------------ cola de trabajos (fase 4a)
     @staticmethod
