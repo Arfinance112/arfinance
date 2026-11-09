@@ -29,8 +29,15 @@ import type {
   Rubro,
 } from "../types/conciliacion";
 
+/** Lo que el sistema leyó de un documento, para revisarlo en pantalla. */
+export interface VistaDocumento {
+  id: string; nombre: string; tipo: string; estado: string; detalle: string; extension: string;
+  hojas: string[]; filas: string[][]; total_filas: number; texto: string;
+}
+
 /** Respuesta de la subida; "en_cola" = archivo grande que procesa el worker (consultar /trabajos/{id}). */
-export interface ResultadoSubida { tipo: string; estado: string; lote_id?: string; trabajo_id?: string; motivo?: "ocr" | "tamano"; aviso_ocr?: string }
+export interface ResultadoSubida { tipo: string; estado: string; lote_id?: string; trabajo_id?: string; motivo?: "ocr" | "tamano"; aviso_ocr?: string;
+  nuevos?: number; repetidos?: number }
 
 const BASE =import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
@@ -92,6 +99,17 @@ export const api = {
     if (cuenta) datos.append("cuenta", cuenta);
     return pedir<ResultadoSubida>(`/clientes/${id}/documentos`, { method: "POST", body: datos });
   },
+  vistaDocumento: (id: string) => pedir<VistaDocumento>(`/documentos/${id}/vista`),
+  eliminarDocumento: (id: string) => pedir<string>(`/documentos/${id}`, { method: "DELETE" }),
+  /** Abre el original en una pestaña nueva (va con el token de sesión, por eso no alcanza un enlace común). */
+  abrirDocumento: async (id: string) => {
+    const pestana = window.open("", "_blank");   // se abre ya, antes del await: si no, el navegador la bloquea
+    const token = await tokenActual();
+    const r = await fetch(`${BASE}/documentos/${id}/archivo`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!r.ok) { pestana?.close(); throw new ApiError(r.status, await r.text()); }
+    const url = URL.createObjectURL(await r.blob());
+    if (pestana) pestana.location.href = url; else window.location.href = url;
+  },
   reprocesarDocumento: (id: string) => pedir<ResultadoSubida>(`/documentos/${id}/reprocesar`, { method: "POST" }),
   trabajo: (id: string) =>
     pedir<{ estado: "pendiente" | "procesando" | "hecho" | "error"; resultado: ResultadoSubida | null; error: string | null }>(`/trabajos/${id}`),
@@ -144,8 +162,7 @@ export const api = {
     pedir<MovimientoPropuesto>(`/lotes/${loteId}/movimientos/${movId}`, { method: "PATCH", body: JSON.stringify(c) }),
   crearRegla: (clienteId: string, r: ReglaNueva) =>
     pedir<{ movimientos_reclasificados: number }>(`/clientes/${clienteId}/reglas`, json(r)),
-  aprobar: (loteId: string, incluirPosiblesDuplicados: boolean) =>
-    pedir<ResultadoAprobacion>(`/lotes/${loteId}/aprobar`, json({ incluir_posibles_duplicados: incluirPosiblesDuplicados })),
+  aprobar: (loteId: string) => pedir<ResultadoAprobacion>(`/lotes/${loteId}/aprobar`, json({})),
 };
 
 export const mensajeDeError = (e: unknown): string =>
