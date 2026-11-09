@@ -8,7 +8,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from app.core.numeros import parse_fecha, parse_numero
-from app.finanzas.items import LineaVenta
+from app.finanzas.items import LineaCompra, LineaVenta
 from app.ingesta.reglas import normalizar
 
 ALIAS = {
@@ -16,7 +16,8 @@ ALIAS = {
     "comprobante": ["COMPROBANTE", "NRO COMPROBANTE", "FACTURA", "TICKET", "NUMERO"],
     "item": ["CODIGO", "CODIGO ITEM", "ITEM", "SKU", "CODIGO PRODUCTO", "PRODUCTO CODIGO"],
     "cantidad": ["CANTIDAD", "CANT", "UNIDADES"],
-    "precio": ["PRECIO UNITARIO", "PRECIO UNIT", "PRECIO NETO", "PRECIO"],
+    "precio": ["PRECIO UNITARIO", "PRECIO UNIT", "PRECIO NETO", "PRECIO", "COSTO UNITARIO", "COSTO UNIT", "COSTO"],
+    "proveedor": ["PROVEEDOR", "RAZON SOCIAL PROVEEDOR", "CUIT PROVEEDOR", "PROVEEDOR CUIT"],
     "importe": ["IMPORTE NETO", "SUBTOTAL", "IMPORTE", "TOTAL NETO"],
 }
 
@@ -41,7 +42,33 @@ def _encabezado(filas: list[list]) -> tuple[int, dict[str, int]] | None:
 
 
 def es_detalle_ventas(filas: list[list]) -> bool:
-    return _encabezado(filas) is not None
+    h = _encabezado(filas)
+    return h is not None and "proveedor" not in h[1]
+
+
+def es_detalle_compras(filas: list[list]) -> bool:
+    """Mismo formato que el detalle de ventas, con una columna Proveedor."""
+    h = _encabezado(filas)
+    return h is not None and "proveedor" in h[1]
+
+
+def leer_detalle_compras(filas: list[list]) -> list[LineaCompra]:
+    hallado = _encabezado(filas)
+    if not hallado or "proveedor" not in hallado[1]:
+        raise ValueError("No se encontraron las columnas Fecha, Proveedor, Código de ítem, Cantidad y Costo.")
+    i, mapa = hallado
+    v = lambda f, c: f[mapa[c]] if c in mapa and mapa[c] < len(f) else None
+    salida = []
+    for fila in filas[i + 1:]:
+        fecha = parse_fecha(v(fila, "fecha"))
+        codigo = str(v(fila, "item") or "").strip()
+        cantidad = parse_numero(v(fila, "cantidad"))
+        if not fecha or not codigo or cantidad == 0:
+            continue
+        costo = parse_numero(v(fila, "precio")) if "precio" in mapa else parse_numero(v(fila, "importe")) / cantidad
+        salida.append(LineaCompra(fecha, str(v(fila, "comprobante") or "").strip(), str(v(fila, "proveedor") or "").strip(),
+                                  codigo.upper(), cantidad, abs(costo)))
+    return salida
 
 
 def leer_detalle_ventas(filas: list[list]) -> list[LineaVenta]:

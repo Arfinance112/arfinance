@@ -50,6 +50,8 @@ def tipo_documento(archivo: ArchivoLeido) -> str:
         return "f931"
     if comprobantes_arca.es_mis_comprobantes(archivo.filas):
         return "mis_comprobantes"
+    if detalle_ventas.es_detalle_compras(archivo.filas):
+        return "detalle_compras"
     if detalle_ventas.es_detalle_ventas(archivo.filas):
         return "detalle_ventas"
     return "extracto"
