@@ -250,3 +250,20 @@ export interface ImportacionPlanilla {
   ejemplos_omitidos: number;
   avisos: string[];
 }
+
+// ---------------------------------------------------------------- plan de cuentas contable
+export interface CuentaContable {
+  codigo: string;
+  nombre: string;
+  imputable: boolean;
+  ajustable: boolean;
+  expuesta: boolean;
+  clase: number;
+  clase_nombre: string;
+  padre: string | null;
+  comentario: string;
+  rubros: string[];
+  en_uso: boolean;
+  subcuentas: number;
+}
+export interface PlanCuentas { cuentas: CuentaContable[]; rubros_sin_cuenta: string[] }
