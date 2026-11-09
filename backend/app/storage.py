@@ -17,6 +17,7 @@ import httpx
 class Almacenamiento(Protocol):
     def guardar(self, ruta: str, contenido: bytes, tipo: str) -> str: ...
     def leer(self, ruta: str) -> bytes: ...
+    def borrar(self, ruta: str) -> None: ...
 
 
 class AlmacenamientoLocal:
@@ -38,6 +39,9 @@ class AlmacenamientoLocal:
     def leer(self, ruta: str) -> bytes:
         return self._archivo(ruta).read_bytes()
 
+    def borrar(self, ruta: str) -> None:
+        self._archivo(ruta).unlink(missing_ok=True)
+
 
 class AlmacenamientoSupabase:
     def __init__(self, url: str, service_key: str, bucket: str = "documentos"):
@@ -57,6 +61,11 @@ class AlmacenamientoSupabase:
         r = httpx.get(f"{self.base}/{ruta}", headers=self.headers, timeout=60)
         r.raise_for_status()
         return r.content
+
+    def borrar(self, ruta: str) -> None:
+        r = httpx.delete(f"{self.base}/{ruta}", headers=self.headers, timeout=60)
+        if r.status_code not in (200, 204, 404):
+            raise RuntimeError(f"Supabase Storage respondió {r.status_code} al borrar: {r.text[:200]}")
 
 
 def crear_almacenamiento() -> Almacenamiento:
