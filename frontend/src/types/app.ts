@@ -73,6 +73,17 @@ export interface FlujoMoneda {
 
 export type Flujo = Record<string, FlujoMoneda>;
 
+export interface StockItem {
+  comprado: number;
+  vendido: number;
+  mermas: number;
+  stock_teorico: number;
+  costo_real: number | null;
+  costo_estandar_ars: number | null;
+  desvio: number | null;
+  alerta: boolean;
+}
+
 export interface Comprobante {
   id: string;
   sentido: "emitido" | "recibido";
