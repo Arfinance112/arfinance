@@ -21,7 +21,14 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
     void api.rubros().then((r) => setRubros(r.filter((x) => x.linea_pl !== "NO P&L" || x.codigo.startsWith("INV"))));
   }, []);
 
-  const total = useMemo(() => comps.reduce((s, c) => s + Number(c.neto_ars), 0), [comps]);
+  const [buscar, setBuscar] = useState("");
+  // busca en proveedor/cliente, CUIT, número de comprobante y rubro, sin distinguir mayúsculas ni acentos
+  const sinAcentos = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+  const visibles = useMemo(() => {
+    const q = sinAcentos(buscar.trim());
+    return q ? comps.filter((c) => sinAcentos(`${c.contraparte} ${c.cuit} ${c.comprobante} ${c.rubro ?? ""}`).includes(q)) : comps;
+  }, [comps, buscar]);
+  const total = useMemo(() => visibles.reduce((s, c) => s + Number(c.neto_ars), 0), [visibles]);
 
   async function asignar(c: Comprobante, rubro: string) {
     try {
@@ -48,7 +55,12 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
             Solo los que falta clasificar
           </label>
         )}
-        <span className="sub">{comps.length} comprobantes · neto ARS {importe(total)}</span>
+        <label>
+          Buscar
+          <input type="search" value={buscar} onChange={(e) => setBuscar(e.target.value)}
+            placeholder={sentido === "recibido" ? "Proveedor, CUIT, número o rubro" : "Cliente, CUIT o número"} />
+        </label>
+        <span className="sub">{visibles.length}{buscar ? ` de ${comps.length}` : ""} comprobantes · neto ARS {importe(total)}</span>
       </div>
       <p role="status" aria-live="polite" className="mensaje ok">{mensaje}</p>
 
@@ -58,12 +70,13 @@ export function Comprobantes({ clienteId }: { clienteId: string }) {
             <tr><th>Fecha</th><th>Comprobante</th><th>{sentido === "recibido" ? "Proveedor" : "Cliente"}</th><th>CUIT</th><th className="num">Neto ARS</th>{sentido === "recibido" && <th>Rubro</th>}</tr>
           </thead>
           <tbody>
-            {comps.length === 0 && (
+            {visibles.length === 0 && (
               <tr><td colSpan={6} className="vacio">
-                {sentido === "recibido" && soloSinRubro ? "Todas las compras están clasificadas." : "No hay comprobantes. Subí Mis Comprobantes en Documentos."}
+                {buscar ? "Ningún comprobante coincide con la búsqueda."
+                  : sentido === "recibido" && soloSinRubro ? "Todas las compras están clasificadas." : "No hay comprobantes. Subí Mis Comprobantes en Documentos."}
               </td></tr>
             )}
-            {comps.map((c) => (
+            {visibles.map((c) => (
               <tr key={c.id}>
                 <td>{fecha(c.fecha)}</td>
                 <td>{c.comprobante}</td>

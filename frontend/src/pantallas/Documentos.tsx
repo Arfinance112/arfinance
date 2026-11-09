@@ -1,8 +1,9 @@
-﻿import { useEffect, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useRef, useState } from "react";
 
 import { api, mensajeDeError } from "../api/client";
 import { fecha, tamano } from "../formato";
 import type { Cuenta, Documento } from "../types/app";
+import { VistaDocumento } from "./VistaDocumento";
 
 const ESTADO: Record<string, { texto: string; clase: string }> = {
   pendiente: { texto: "Pendiente", clase: "estado-pendiente" },
@@ -21,11 +22,13 @@ const estadoDe = (estado: string, tipo: string) =>
 /** Un extracto que ya pasó movimientos a Tesorería no se relee (los duplicaría); la planilla se importa una vez. */
 const puedeReprocesar = (d: Documento) =>
   d.tipo !== "planilla_v2" && !(d.estado === "aprobado" && !/^0 /.test(d.detalle ?? ""));
+/** Mismo criterio que el servidor: un extracto con movimientos ya en Tesorería no se elimina. */
+const puedeEliminar = (d: Documento) => !(d.estado === "aprobado" && !/^0 /.test(d.detalle ?? ""));
 const ACEPTADOS = ".xlsx,.xlsm,.csv,.txt,.pdf";
 
 interface Subida {
   nombre: string;
-  estado: "subiendo" | "ok" | "error";
+  estado: "subiendo" | "ok" | "aviso" | "error";
   mensaje?: string;
 }
 
@@ -40,6 +43,26 @@ export function Documentos({ clienteId }: { clienteId: string }) {
 
   const cargar = () => api.documentos(clienteId).then(setDocs);
   const [reprocesando, setReprocesando] = useState<string | null>(null);
+  const [viendo, setViendo] = useState<Documento | null>(null);
+  const cerrarVista = useCallback(() => setViendo(null), []);
+
+  async function eliminar(d: Documento) {
+    const queSeBorra = d.tipo === "extracto" ? "el extracto y su conciliación pendiente"
+      : d.tipo === "mis_comprobantes" ? "el archivo y todos los comprobantes que se cargaron desde él"
+      : d.tipo === "f931" ? "el archivo y el costo laboral de ese período"
+      : "el archivo y lo que se cargó desde él";
+    if (!window.confirm(`¿Eliminar «${d.nombre}»?\n\nSe borra ${queSeBorra}. No se puede deshacer.`)) return;
+    setReprocesando(d.id);
+    try {
+      await api.eliminarDocumento(d.id);
+      setSubidas((s) => [{ nombre: d.nombre, estado: "ok", mensaje: "Eliminado" }, ...s]);
+    } catch (e) {
+      setSubidas((s) => [{ nombre: d.nombre, estado: "error", mensaje: mensajeDeError(e) }, ...s]);
+    } finally {
+      setReprocesando(null);
+      await cargar();
+    }
+  }
 
   async function reprocesar(d: Documento) {
     setReprocesando(d.id);
@@ -80,7 +103,12 @@ export function Documentos({ clienteId }: { clienteId: string }) {
             if (Date.now() > limite) throw new Error("Sigue en proceso: revisá la lista de documentos en unos minutos.");
           }
         }
-        marcar({ estado: "ok", mensaje: `${TIPO[r.tipo] ?? r.tipo} · ${estadoDe(r.estado, r.tipo)?.texto ?? r.estado}${r.aviso_ocr ? ` · ${r.aviso_ocr}` : ""}` });
+        const repetidos = r.repetidos ?? 0;
+        const avisoDup = !repetidos ? "" : r.tipo === "mis_comprobantes"
+          ? ` · ⚠ ${repetidos} ${repetidos === 1 ? "comprobante ya estaba cargado" : "comprobantes ya estaban cargados"} (mismo CUIT, tipo, punto de venta y número): no se duplicaron`
+          : ` · ⚠ ${repetidos} renglones ya estaban cargados: no se duplicaron`;
+        marcar({ estado: repetidos ? "aviso" : "ok",
+                 mensaje: `${TIPO[r.tipo] ?? r.tipo} · ${estadoDe(r.estado, r.tipo)?.texto ?? r.estado}${r.aviso_ocr ? ` · ${r.aviso_ocr}` : ""}${avisoDup}` });
       } catch (e) {
         marcar({ estado: "error", mensaje: mensajeDeError(e) });
       }
@@ -155,6 +183,10 @@ export function Documentos({ clienteId }: { clienteId: string }) {
                       {d.estado === "aprobado" ? "Ver" : "Conciliar"}
                     </a>
                   )}
+                  <button className="link" onClick={() => setViendo(d)}>Ver</button>
+                  {puedeEliminar(d) && (
+                    <button className="link peligro" disabled={reprocesando === d.id} onClick={() => void eliminar(d)}>Eliminar</button>
+                  )}
                   {puedeReprocesar(d) && (
                     <button className="link" disabled={reprocesando === d.id} onClick={() => void reprocesar(d)}
                       title="Vuelve a leer el archivo original con el lector actual y reemplaza lo cargado desde él">
@@ -167,6 +199,7 @@ export function Documentos({ clienteId }: { clienteId: string }) {
           </tbody>
         </table>
       </div>
+      {viendo && <VistaDocumento id={viendo.id} alCerrar={cerrarVista} />}
     </div>
   );
 }
