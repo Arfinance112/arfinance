@@ -14,6 +14,7 @@ import type {
   MovimientoTesoreria,
   Perfil,
   Resultados,
+  StockItem,
   Saldo,
   Tablero,
   Cierre,
@@ -158,7 +159,7 @@ export const api = {
   guardarNota: (id: string, rubro: string, mes: string, nota: string) =>
     pedir<{ ok: boolean }>(`/clientes/${id}/control/nota`, { method: "PUT", body: JSON.stringify({ rubro, mes, nota }) }),
   // ítems, mermas y rentabilidad
-  items: (id: string) => pedir<{ items: Item[]; vendidos_sin_alta: string[] }>(`/clientes/${id}/items`),
+  items: (id: string) => pedir<{ items: Item[]; vendidos_sin_alta: string[]; stock: Record<string, StockItem> }>(`/clientes/${id}/items`),
   guardarItem: (id: string, item: Item) => {
     const { codigo, ...resto } = item;
     return pedir<Item>(`/clientes/${id}/items/${encodeURIComponent(codigo)}`, { method: "PUT", body: JSON.stringify(resto) });
