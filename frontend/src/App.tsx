@@ -19,6 +19,7 @@ import { Documentos } from "./pantallas/Documentos";
 import { Flujo } from "./pantallas/Flujo";
 import { ElegirClave, Ingreso } from "./pantallas/Ingreso";
 import { Tablero } from "./pantallas/Tablero";
+import { Usuarios } from "./pantallas/Usuarios";
 import { Tesoreria } from "./pantallas/Tesoreria";
 import { useRuta } from "./router";
 
@@ -51,6 +52,7 @@ const BANDA: Record<string, [string, string]> = {
   rentabilidad: ["Rentabilidad", "Qué unidad de negocio y qué ítem gana o pierde, y cuánto hay que vender para no perder."],
   presupuesto: ["Presupuesto", "Base a precios de enero; cada mes se actualiza solo con el índice de su rubro."],
   control: ["Control presupuestario", "Real contra presupuesto, con semáforo y la explicación de cada desvío."],
+  usuarios: ["Usuarios", "Quiénes trabajan en tu organización y qué puede hacer cada uno."],
   alta: ["Nuevo cliente", "Desde tu Planilla de Gestión Integral v2 o desde cero, en pocos pasos."],
   indices: ["Índices y tipos de cambio", "IPC y cotizaciones de cada mes, comunes a todos los clientes."],
   lote: ["Conciliación de extractos", "Revisá lo que trajo el extracto, resolvé las alertas y pasalo a Tesorería."],
@@ -89,6 +91,7 @@ export default function App() {
           </nav>
         )}
         <div className="app-header-fin">
+          <a className="link" href="#/usuarios" aria-current={ruta.pantalla === "usuarios" ? "page" : undefined}>Usuarios</a>
           <a className="link" href="#/indices" aria-current={ruta.pantalla === "indices" ? "page" : undefined}>Índices</a>
           {modoDesarrollo ? <span className="chip">modo desarrollo</span> : (
             <>
@@ -119,6 +122,7 @@ export default function App() {
         {ruta.pantalla === "clientes" && <Clientes />}
         {ruta.pantalla === "indices" && <Indices />}
         {ruta.pantalla === "alta" && <AltaCliente />}
+        {ruta.pantalla === "usuarios" && <Usuarios />}
         {ruta.pantalla === "cliente" && ruta.seccion === "tablero" && <Tablero clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "comprobantes" && <Comprobantes clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "resultados" && <Resultados clienteId={ruta.clienteId} />}
