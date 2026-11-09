@@ -41,6 +41,10 @@ export interface ResumenLote {
 export interface Conciliacion {
   fecha?: string;
   saldo_extracto?: number | null;
+  fecha_inicial?: string;
+  saldo_inicial_extracto?: number | null;
+  saldo_inicial_sistema?: number;
+  diferencia_inicial?: number | null;
   saldo_planilla_actual?: number;
   saldo_planilla_despues_de_aprobar?: number;
   diferencia?: number | null;
