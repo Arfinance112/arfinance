@@ -43,6 +43,17 @@ class LineaVenta:
 
 
 @dataclass
+class LineaCompra:
+    fecha: date
+    comprobante: str
+    proveedor: str
+    item: str
+    cantidad: Decimal                         # notas de crédito: negativa
+    costo_unitario: Decimal                   # neto sin IVA, en ARS
+    id: str = ""
+
+
+@dataclass
 class Merma:
     fecha: date
     item: str
@@ -174,3 +185,33 @@ def agrupar_mermas_por_causa(mermas: Iterable[Merma], items: dict[str, Item], in
         if it:
             por_causa[m.causa] += m.cantidad * (costo_unitario_ars(it, m.fecha.replace(day=1), indices) or CERO)
     return dict(sorted(por_causa.items(), key=lambda kv: -kv[1]))
+
+
+DESVIO_ALERTA = Decimal("0.10")
+
+
+def stock_y_costo_real(compras: Iterable[LineaCompra], ventas: Iterable[LineaVenta], mermas: Iterable[Merma],
+                       items: dict[str, Item], indices: TablaIndices | None, hoy: date) -> dict[str, dict]:
+    """Por ítem: comprado, vendido, mermas, stock teórico y costo real promedio ponderado contra el estándar.
+    Alerta si el costo real se aparta más de un 10 % del estándar (del mes actual, en ARS)."""
+    fila = lambda: {"comprado": CERO, "vendido": CERO, "mermas": CERO, "importe_comprado": CERO}
+    t: dict[str, dict] = {}
+    for c in compras:
+        f = t.setdefault(c.item, fila())
+        f["comprado"] += c.cantidad
+        f["importe_comprado"] += c.cantidad * c.costo_unitario
+    for v in ventas:
+        t.setdefault(v.item, fila())["vendido"] += v.cantidad
+    for m in mermas:
+        t.setdefault(m.item, fila())["mermas"] += m.cantidad
+    sal = {}
+    for codigo, f in sorted(t.items()):
+        real = (f["importe_comprado"] / f["comprado"]).quantize(Decimal("0.01")) if f["comprado"] > 0 else None
+        it = items.get(codigo)
+        est = costo_unitario_ars(it, hoy.replace(day=1), indices) if it and it.costo_estandar else None
+        desvio = ((real - est) / est).quantize(Decimal("0.0001")) if real is not None and est else None
+        sal[codigo] = {"comprado": f["comprado"], "vendido": f["vendido"], "mermas": f["mermas"],
+                       "stock_teorico": f["comprado"] - f["vendido"] - f["mermas"],
+                       "costo_real": real, "costo_estandar_ars": est, "desvio": desvio,
+                       "alerta": desvio is not None and abs(desvio) > DESVIO_ALERTA}
+    return sal
