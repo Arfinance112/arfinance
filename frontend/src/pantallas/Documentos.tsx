@@ -13,7 +13,7 @@ const ESTADO: Record<string, { texto: string; clase: string }> = {
   error: { texto: "Error", clase: "estado-error" },
 };
 const TIPO: Record<string, string> = {
-  extracto: "Extracto", f931: "F.931", mis_comprobantes: "Mis Comprobantes", detalle_ventas: "Detalle de ventas",
+  extracto: "Extracto", f931: "F.931", mis_comprobantes: "Mis Comprobantes", detalle_ventas: "Detalle de ventas", detalle_compras: "Detalle de compras",
   planilla_v2: "Planilla v2",
 };
 /** Solo los extractos se aprueban (pasan a Tesorería); el resto queda cargado al subirlo. */

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 
 import { api, mensajeDeError } from "../api/client";
 import { fecha, importe, moneda } from "../formato";
-import type { Item, Merma } from "../types/app";
+import type { Item, Merma, StockItem } from "../types/app";
 
 const COTIZACIONES = ["ARS", "USD_OFICIAL", "USD_MEP", "USD_CCL", "USD_BLUE", "USDT", "EUR_OFICIAL", "BRL_OFICIAL"];
 const vacio: Item = { codigo: "", descripcion: "", tipo: "Bien", unidad_negocio: "GENERAL", precio_lista: 0, cotizacion_precio: "ARS",
@@ -13,6 +13,7 @@ const hoy = () => new Date().toISOString().slice(0, 10);
 export function Items({ clienteId }: { clienteId: string }) {
   const [items, setItems] = useState<Item[]>([]);
   const [sinAlta, setSinAlta] = useState<string[]>([]);
+  const [stock, setStock] = useState<Record<string, StockItem>>({});
   const [edicion, setEdicion] = useState<Item>(vacio);
   const [mermas, setMermas] = useState<{ causas: string[]; mermas: Merma[]; por_causa: Record<string, number> } | null>(null);
   const [merma, setMerma] = useState({ fecha: hoy(), item: "", cantidad: "", causa: "", turno: "" });
@@ -22,6 +23,7 @@ export function Items({ clienteId }: { clienteId: string }) {
     const r = await api.items(clienteId);
     setItems(r.items);
     setSinAlta(r.vendidos_sin_alta);
+    setStock(r.stock ?? {});
     setMermas(await api.mermas(clienteId));
   };
   useEffect(() => {
@@ -80,6 +82,36 @@ export function Items({ clienteId }: { clienteId: string }) {
                 <td className="num">{moneda(i.cotizacion_precio)} {importe(Number(i.precio_lista))}</td>
                 <td className="num">{moneda(i.cotizacion_costo)} {importe(Number(i.costo_estandar))}</td>
                 <td><button type="button" className="link" onClick={() => setEdicion({ ...i })}>Editar</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h3>Stock teórico y costo real</h3>
+      <p className="sub">Sale del detalle de compras por ítem (subilo en Documentos: mismas columnas que el de ventas más
+        "Proveedor"), menos lo vendido y las mermas. El costo real es el promedio ponderado de lo comprado; se marca
+        si se aparta más de un 10 % del estándar. Estas compras no se suman al resultado: ya entran por Mis Comprobantes.</p>
+      <div className="tabla-scroll">
+        <table className="tabla">
+          <thead>
+            <tr><th>Código</th><th className="num">Comprado</th><th className="num">Vendido</th><th className="num">Mermas</th>
+              <th className="num">Stock teórico</th><th className="num">Costo real ARS</th><th className="num">Estándar ARS</th><th className="num">Desvío</th></tr>
+          </thead>
+          <tbody>
+            {Object.keys(stock).length === 0 && <tr><td colSpan={8} className="vacio">Todavía no hay compras ni ventas por ítem cargadas.</td></tr>}
+            {Object.entries(stock).map(([cod, s]) => (
+              <tr key={cod}>
+                <td><strong>{cod}</strong>{!items.some((i) => i.codigo === cod) && <span className="chip">sin alta</span>}</td>
+                <td className="num">{importe(Number(s.comprado))}</td>
+                <td className="num">{importe(Number(s.vendido))}</td>
+                <td className="num">{importe(Number(s.mermas))}</td>
+                <td className={`num${Number(s.stock_teorico) < 0 ? " negativo" : ""}`}>{importe(Number(s.stock_teorico))}</td>
+                <td className="num">{s.costo_real == null ? "–" : importe(Number(s.costo_real))}</td>
+                <td className="num">{s.costo_estandar_ars == null ? "–" : importe(Number(s.costo_estandar_ars))}</td>
+                <td className={`num${s.alerta ? " negativo" : ""}`}>
+                  {s.desvio == null ? "–" : `${(Number(s.desvio) * 100).toFixed(1)} %`}{s.alerta && " ⚠"}
+                </td>
               </tr>
             ))}
           </tbody>
