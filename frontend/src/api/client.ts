@@ -14,6 +14,8 @@ import type {
   MovimientoTesoreria,
   Perfil,
   Resultados,
+  ClienteArchivado,
+  Inversiones,
   StockItem,
   Saldo,
   Tablero,
@@ -83,6 +85,13 @@ export const api = {
   crearOrganizacion: (nombre: string) => pedir<{ organizacion_id: string }>("/me/organizacion", json({ nombre })),
   // clientes y cuentas
   clientes: () => pedir<ClienteResumen[]>("/clientes"),
+  clientesArchivados: () => pedir<ClienteArchivado[]>("/clientes/archivados"),
+  archivarCliente: (id: string) => pedir<{ archivado: string }>(`/clientes/${id}/archivar`, { method: "POST" }),
+  restaurarCliente: (id: string) => pedir<{ restaurado: string }>(`/clientes/${id}/restaurar`, { method: "POST" }),
+  inversiones: (id: string) => pedir<Inversiones>(`/clientes/${id}/inversiones`),
+  registrarInversion: (id: string, mov: { fecha: string; instrumento: string; nombre: string; tipo: string; importe: string; moneda: string }) =>
+    pedir<unknown>(`/clientes/${id}/inversiones`, { method: "POST", body: JSON.stringify(mov) }),
+  borrarInversion: (id: string, movId: string) => pedir<void>(`/clientes/${id}/inversiones/${movId}`, { method: "DELETE" }),
   crearCliente: (nombre: string, cuit: string) => pedir<{ id: string }>("/clientes", json({ nombre, cuit })),
   importarPlanilla: (archivo: File, o: { simular: boolean; omitirEjemplos: boolean; importarIndices: boolean }) => {
     const datos = new FormData();
