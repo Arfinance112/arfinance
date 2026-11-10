@@ -39,6 +39,7 @@ class ComprobanteRegistrado:
     total_ars: Decimal = CERO     # con IVA: para deudores, proveedores y días de cobro/pago
     unidad_negocio: str | None = None
     centro_costo: str | None = None
+    iva_ars: Decimal = CERO      # con signo, como el neto
 
 
 @dataclass
