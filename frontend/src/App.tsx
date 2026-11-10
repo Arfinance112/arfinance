@@ -10,6 +10,7 @@ import { Comprobantes } from "./pantallas/Comprobantes";
 import { Control } from "./pantallas/Control";
 import { Presupuesto } from "./pantallas/Presupuesto";
 import { Indices } from "./pantallas/Indices";
+import { Inversiones } from "./pantallas/Inversiones";
 import { Items } from "./pantallas/Items";
 import { PlanCuentas } from "./pantallas/PlanCuentas";
 import { Rentabilidad } from "./pantallas/Rentabilidad";
@@ -31,6 +32,7 @@ const SECCIONES = [
   { clave: "cuentas", texto: "Cuentas" },
   { clave: "plan", texto: "Plan de cuentas" },
   { clave: "tesoreria", texto: "Tesorería" },
+  { clave: "inversiones", texto: "Inversiones" },
   { clave: "flujo", texto: "Flujo de caja" },
   { clave: "resultados", texto: "Resultados" },
   { clave: "rentabilidad", texto: "Rentabilidad" },
@@ -45,6 +47,7 @@ const BANDA: Record<string, [string, string]> = {
   plan: ["Plan de cuentas", "Las cuentas contables del cliente y qué rubros de gestión se imputan a cada una."],
   cuentas: ["Cuentas","Bancos, billeteras, cajas, procesadores y tarjetas del cliente, con su moneda."],
   tesoreria: ["Tesorería", "Saldos por cuenta y moneda, y todos los movimientos aprobados."],
+  inversiones: ["Inversiones", "FCI, plazos fijos, cauciones y títulos: lo aportado, lo rescatado y cuánto rinden."],
   flujo: ["Flujo de caja", "Lo que entró y salió cada mes, por concepto."],
   comprobantes: ["Comprobantes", "Ventas y compras de Mis Comprobantes. Clasificá cada proveedor una sola vez."],
   resultados: ["Resultados", "Estado de resultados de gestión: margen de contribución, EBITDA y prime cost."],
@@ -134,6 +137,7 @@ export default function App() {
         {ruta.pantalla === "cliente" && ruta.seccion === "cuentas" && <Cuentas clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "plan" && <PlanCuentas clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "tesoreria" && <Tesoreria clienteId={ruta.clienteId} />}
+        {ruta.pantalla === "cliente" && ruta.seccion === "inversiones" && <Inversiones clienteId={ruta.clienteId} />}
         {ruta.pantalla === "cliente" && ruta.seccion === "flujo" && <Flujo clienteId={ruta.clienteId} />}
         {ruta.pantalla === "lote" && (
           <>

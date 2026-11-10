@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 
 export const SECCIONES_CLIENTE = [
-  "tablero", "documentos", "comprobantes", "plan", "items", "cuentas", "tesoreria", "flujo", "resultados", "rentabilidad", "presupuesto", "control",
+  "tablero", "documentos", "comprobantes", "plan", "items", "cuentas", "tesoreria", "inversiones", "flujo", "resultados", "rentabilidad", "presupuesto", "control",
 ] as const;
 export type Seccion = (typeof SECCIONES_CLIENTE)[number];
 
