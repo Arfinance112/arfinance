@@ -5,12 +5,13 @@ from __future__ import annotations
 import threading
 import uuid
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Protocol
 
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
+from app.finanzas.inversiones import MovInversion
 from app.finanzas.items import Item, LineaCompra, LineaVenta, Merma
 from app.finanzas.plan_cuentas import CuentaContable
 from app.finanzas.tablero import DatosCierre
@@ -20,6 +21,9 @@ from app.ingesta.modelos import MovimientoTesoreria, Regla
 from app.ingesta.pipeline import ResultadoImportacion
 
 
+DIAS_RECUPERO = 30
+
+
 @dataclass
 class Cliente:
     id: str
@@ -27,6 +31,7 @@ class Cliente:
     cuit: str = ""
     organizacion_id: str = ""
     creado: datetime = field(default_factory=datetime.now)
+    archivado_en: datetime | None = None       # archivado: no se ve; se recupera durante DIAS_RECUPERO días
 
 
 @dataclass
@@ -113,6 +118,13 @@ class Repositorio(Protocol):
     def crear_cliente(self, organizacion_id: str, nombre: str, cuit: str) -> Cliente: ...
     def clientes(self, usuario_id: str) -> list[Cliente]: ...
     def cliente(self, cliente_id: str) -> Cliente | None: ...
+    def archivar_cliente(self, cliente_id: str) -> None: ...
+    def restaurar_cliente(self, cliente_id: str) -> bool: ...
+    def clientes_archivados(self, usuario_id: str) -> list[Cliente]: ...
+    # inversiones (paso 5)
+    def movs_inversion(self, cliente_id: str) -> list[MovInversion]: ...
+    def guardar_mov_inversion(self, cliente_id: str, mov: MovInversion) -> MovInversion: ...
+    def borrar_mov_inversion(self, cliente_id: str, mov_id: str) -> bool: ...
     def agregar_cuenta(self, cliente_id: str, cuenta: Cuenta) -> Cuenta: ...
     def cuentas(self, cliente_id: str) -> dict[str, Cuenta]: ...
     def agregar_regla(self, regla: Regla) -> Regla: ...
@@ -195,6 +207,7 @@ class RepositorioMemoria:
         self._items: dict[str, dict[str, Item]] = {}
         self._ventas: dict[str, dict[tuple, LineaVenta]] = {}
         self._compras_item: dict[str, dict[tuple, LineaCompra]] = {}
+        self._inversiones: dict[str, list[MovInversion]] = {}
         self._mermas: dict[str, list[Merma]] = {}
         self._cierres: dict[str, dict[date, DatosCierre]] = {}
         self._metas: dict[str, dict[str, tuple[Decimal | None, str]]] = {}
@@ -245,7 +258,35 @@ class RepositorioMemoria:
         return c
 
     def clientes(self, usuario_id: str) -> list[Cliente]:
-        return [c for c in self._clientes.values() if c.organizacion_id == self._orgs.get(usuario_id)]
+        return [c for c in self._clientes.values() if c.organizacion_id == self._orgs.get(usuario_id) and not c.archivado_en]
+
+    def archivar_cliente(self, cliente_id: str) -> None:
+        self._clientes[cliente_id].archivado_en = datetime.now()
+
+    def restaurar_cliente(self, cliente_id: str) -> bool:
+        c = self._clientes.get(cliente_id)
+        if not c or not c.archivado_en or datetime.now() - c.archivado_en > timedelta(days=DIAS_RECUPERO):
+            return False
+        c.archivado_en = None
+        return True
+
+    def clientes_archivados(self, usuario_id: str) -> list[Cliente]:
+        limite = datetime.now() - timedelta(days=DIAS_RECUPERO)
+        return sorted((c for c in self._clientes.values() if c.organizacion_id == self._orgs.get(usuario_id)
+                       and c.archivado_en and c.archivado_en > limite), key=lambda c: c.archivado_en, reverse=True)
+
+    def movs_inversion(self, cliente_id: str) -> list[MovInversion]:
+        return sorted(self._inversiones.get(cliente_id, []), key=lambda m: (m.fecha, m.id))
+
+    def guardar_mov_inversion(self, cliente_id: str, mov: MovInversion) -> MovInversion:
+        mov.id = uuid.uuid4().hex[:12]
+        self._inversiones.setdefault(cliente_id, []).append(mov)
+        return mov
+
+    def borrar_mov_inversion(self, cliente_id: str, mov_id: str) -> bool:
+        antes = self._inversiones.get(cliente_id, [])
+        self._inversiones[cliente_id] = [m for m in antes if m.id != mov_id]
+        return len(antes) != len(self._inversiones[cliente_id])
 
     def cliente(self, cliente_id: str) -> Cliente | None:
         return self._clientes.get(cliente_id)

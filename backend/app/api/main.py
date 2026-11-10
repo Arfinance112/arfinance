@@ -24,8 +24,9 @@ from pydantic import BaseModel, Field
 from app import seeds
 from app.api.auth import Usuario, es_admin_plataforma, usuario_actual, verificar_configuracion
 from app.api import invitaciones
-from app.api.repositorio import ROLES, Cuenta, Documento, Lote, Repositorio, RepositorioMemoria
+from app.api.repositorio import DIAS_RECUPERO, ROLES, Cuenta, Documento, Lote, Repositorio, RepositorioMemoria
 from app.finanzas.asientos import construir_asientos
+from app.finanzas.inversiones import INSTRUMENTOS, MONEDAS, TIPOS, MovInversion, posiciones
 from app.finanzas.flujo import flujo_mensual
 from app.finanzas.indices import FilaIndice, TablaIndices
 from app.finanzas.items import (Item, Merma, stock_y_costo_real, agrupar_mermas_por_causa, asientos_de_items, costos_fijos_del_periodo,
@@ -206,6 +207,8 @@ def _cliente_o_404(r: Repositorio, cliente_id: str, u: Usuario):
     c = r.cliente(cliente_id)
     if not c or not r.puede_ver_cliente(u.id, cliente_id):
         raise HTTPException(404, "Cliente inexistente")
+    if c.archivado_en:
+        raise HTTPException(404, "El cliente está archivado: restauralo desde Clientes › Archivados.")
     return c
 
 
@@ -443,6 +446,70 @@ def saldos(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio
 def tesoreria(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
     _cliente_o_404(r, cliente_id, u)
     return r.tesoreria(cliente_id)
+
+
+@app.get("/clientes/archivados")
+def listar_archivados(u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """Clientes archivados que todavía se pueden restaurar (hasta 30 días después de archivarlos)."""
+    return [{"id": c.id, "nombre": c.nombre, "cuit": c.cuit, "archivado_en": c.archivado_en,
+             "restaurable_hasta": c.archivado_en + timedelta(days=DIAS_RECUPERO)} for c in r.clientes_archivados(u.id)]
+
+
+@app.post("/clientes/{cliente_id}/archivar")
+def archivar_cliente(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """Saca el cliente de la lista sin borrar nada. Se puede restaurar durante 30 días."""
+    c = _cliente_o_404(r, cliente_id, u)
+    r.archivar_cliente(c.id)
+    return {"archivado": c.id, "restaurable_dias": DIAS_RECUPERO}
+
+
+@app.post("/clientes/{cliente_id}/restaurar")
+def restaurar_cliente(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    c = r.cliente(cliente_id)
+    if not c or not r.puede_ver_cliente(u.id, cliente_id):
+        raise HTTPException(404, "Cliente inexistente")
+    if not c.archivado_en:
+        raise HTTPException(409, "El cliente no está archivado")
+    if not r.restaurar_cliente(cliente_id):
+        raise HTTPException(410, f"Pasaron más de {DIAS_RECUPERO} días: el cliente ya no se puede restaurar.")
+    return {"restaurado": cliente_id}
+
+
+# ------------------------------------------------------------------ inversiones (paso 5)
+class MovInversionIn(BaseModel):
+    fecha: date
+    instrumento: str
+    nombre: str = Field(min_length=1, max_length=80)
+    tipo: str
+    importe: Decimal = Field(ge=0)
+    moneda: str = "ARS"
+
+
+@app.get("/clientes/{cliente_id}/inversiones")
+def listar_inversiones(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    movs = r.movs_inversion(cliente_id)
+    return {"movimientos": movs, "posiciones": posiciones(movs), "instrumentos": INSTRUMENTOS}
+
+
+@app.post("/clientes/{cliente_id}/inversiones", status_code=201)
+def registrar_inversion(cliente_id: str, body: MovInversionIn, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    if body.instrumento not in INSTRUMENTOS:
+        raise HTTPException(422, "Instrumento inválido: " + ", ".join(INSTRUMENTOS))
+    if body.tipo not in TIPOS:
+        raise HTTPException(422, "Tipo inválido: aporte, rescate o valuacion")
+    if body.moneda not in MONEDAS:
+        raise HTTPException(422, "Moneda inválida: ARS o USD")
+    return r.guardar_mov_inversion(cliente_id, MovInversion(body.fecha, body.instrumento, body.nombre.strip(), body.tipo,
+                                                            body.importe, body.moneda))
+
+
+@app.delete("/clientes/{cliente_id}/inversiones/{mov_id}", status_code=204)
+def borrar_inversion(cliente_id: str, mov_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    _cliente_o_404(r, cliente_id, u)
+    if not r.borrar_mov_inversion(cliente_id, mov_id):
+        raise HTTPException(404, "Movimiento inexistente")
 
 
 @app.get("/clientes/{cliente_id}")
