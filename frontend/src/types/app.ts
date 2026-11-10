@@ -73,6 +73,25 @@ export interface FlujoMoneda {
 
 export type Flujo = Record<string, FlujoMoneda>;
 
+export interface MesImpuestos {
+  mes: string;
+  debito_iva: number;
+  credito_iva: number;
+  iva_a_pagar: number;
+  saldo_a_favor: number;
+  ventas_netas: number;
+  iibb: number;
+  total: number;
+  proyectado: boolean;
+}
+
+export interface Impuestos {
+  meses: MesImpuestos[];
+  proyeccion: MesImpuestos[];
+  ganancias: { bai_acumulado: number; meses: number; bai_anualizado: number | null; tasa: number;
+    impuesto_acumulado: number; impuesto_anual_estimado: number | null };
+}
+
 export interface MovInversion {
   id: string;
   fecha: string;
