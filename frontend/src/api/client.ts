@@ -14,6 +14,7 @@ import type {
   MovimientoTesoreria,
   Perfil,
   Resultados,
+  VistaImportacion,
   Impuestos,
   ClienteArchivado,
   Inversiones,
@@ -110,6 +111,21 @@ export const api = {
   perfiles: () => pedir<Perfil[]>("/perfiles"),
   // documentos
   documentos: (id: string) => pedir<Documento[]>(`/clientes/${id}/documentos`),
+  vistaImportacion: (id: string, archivo: File, filaEncabezado?: number) => {
+    const datos = new FormData();
+    datos.append("archivo", archivo);
+    if (filaEncabezado !== undefined) datos.append("fila_encabezado", String(filaEncabezado));
+    return pedir<VistaImportacion>(`/clientes/${id}/importar/vista`, { method: "POST", body: datos });
+  },
+  importarConMapeo: (id: string, archivo: File, destino: string, mapeo: Record<string, number | "">, filaEncabezado: number) => {
+    const datos = new FormData();
+    datos.append("archivo", archivo);
+    datos.append("destino", destino);
+    datos.append("mapeo", JSON.stringify(mapeo));
+    datos.append("fila_encabezado", String(filaEncabezado));
+    return pedir<{ tipo: string; importados?: number; con_errores?: number; errores: string[]; nuevos?: number; repetidos?: number;
+      items_desconocidos?: string[] }>(`/clientes/${id}/importar`, { method: "POST", body: datos });
+  },
   subirDocumento: (id: string, archivo: File, cuenta?: string) => {
     const datos = new FormData();
     datos.append("archivo", archivo);
