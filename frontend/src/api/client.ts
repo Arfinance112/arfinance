@@ -14,6 +14,7 @@ import type {
   MovimientoTesoreria,
   Perfil,
   Resultados,
+  Impuestos,
   ClienteArchivado,
   Inversiones,
   StockItem,
@@ -88,6 +89,8 @@ export const api = {
   clientesArchivados: () => pedir<ClienteArchivado[]>("/clientes/archivados"),
   archivarCliente: (id: string) => pedir<{ archivado: string }>(`/clientes/${id}/archivar`, { method: "POST" }),
   restaurarCliente: (id: string) => pedir<{ restaurado: string }>(`/clientes/${id}/restaurar`, { method: "POST" }),
+  impuestos: (id: string, alicuotaIibb: number, tasaGanancias: number) =>
+    pedir<Impuestos>(`/clientes/${id}/impuestos?${new URLSearchParams({ alicuota_iibb: String(alicuotaIibb), tasa_ganancias: String(tasaGanancias) })}`),
   inversiones: (id: string) => pedir<Inversiones>(`/clientes/${id}/inversiones`),
   registrarInversion: (id: string, mov: { fecha: string; instrumento: string; nombre: string; tipo: string; importe: string; moneda: string }) =>
     pedir<unknown>(`/clientes/${id}/inversiones`, { method: "POST", body: JSON.stringify(mov) }),
