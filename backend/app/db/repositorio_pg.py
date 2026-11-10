@@ -17,6 +17,8 @@ from psycopg.rows import dict_row
 from app.api.repositorio import MAX_INTENTOS, Cliente, Cuenta, Documento, Lote, Miembro, Trabajo
 from app.finanzas.asientos import ComprobanteRegistrado, CostoLaboral
 from app.finanzas.indices import FilaIndice
+from app.api.repositorio import DIAS_RECUPERO
+from app.finanzas.inversiones import MovInversion
 from app.finanzas.items import Item, LineaCompra, LineaVenta, Merma
 from app.finanzas.plan_cuentas import CuentaContable
 from app.finanzas.tablero import DatosCierre
@@ -123,7 +125,8 @@ class RepositorioPostgres:
         if not _es_uuid(usuario_id):
             return []
         with self._con() as con:
-            filas = con.execute(f"SELECT c.* FROM clientes c WHERE c.activo AND {_VISIBLE} ORDER BY c.nombre", {"u": usuario_id}).fetchall()
+            filas = con.execute(f"SELECT c.* FROM clientes c WHERE c.activo AND c.archivado_en IS NULL AND {_VISIBLE} ORDER BY c.nombre",
+                                {"u": usuario_id}).fetchall()
         return [Cliente(str(f["id"]), f["nombre"], f["cuit"] or "", str(f["organizacion_id"]), f["creado_en"]) for f in filas]
 
     def cliente(self, cliente_id: str) -> Cliente | None:
@@ -131,7 +134,50 @@ class RepositorioPostgres:
             return None
         with self._con() as con:
             f = con.execute("SELECT * FROM clientes WHERE id = %s", (cliente_id,)).fetchone()
-        return Cliente(str(f["id"]), f["nombre"], f["cuit"] or "", str(f["organizacion_id"]), f["creado_en"]) if f else None
+        return Cliente(str(f["id"]), f["nombre"], f["cuit"] or "", str(f["organizacion_id"]), f["creado_en"],
+                       f["archivado_en"]) if f else None
+
+    def archivar_cliente(self, cliente_id: str) -> None:
+        with self._con() as con:
+            con.execute("UPDATE clientes SET archivado_en = now() WHERE id = %s", (cliente_id,))
+
+    def restaurar_cliente(self, cliente_id: str) -> bool:
+        if not _es_uuid(cliente_id):
+            return False
+        with self._con() as con:
+            return con.execute("""UPDATE clientes SET archivado_en = NULL WHERE id = %s
+                                  AND archivado_en > now() - make_interval(days => %s)""",
+                               (cliente_id, DIAS_RECUPERO)).rowcount == 1
+
+    def clientes_archivados(self, usuario_id: str) -> list[Cliente]:
+        if not _es_uuid(usuario_id):
+            return []
+        with self._con() as con:
+            filas = con.execute(f"""SELECT c.* FROM clientes c WHERE c.archivado_en > now() - make_interval(days => %(d)s)
+                                    AND {_VISIBLE} ORDER BY c.archivado_en DESC""", {"u": usuario_id, "d": DIAS_RECUPERO}).fetchall()
+        return [Cliente(str(f["id"]), f["nombre"], f["cuit"] or "", str(f["organizacion_id"]), f["creado_en"], f["archivado_en"])
+                for f in filas]
+
+    def movs_inversion(self, cliente_id: str) -> list:
+        with self._con() as con:
+            filas = con.execute("SELECT * FROM inversiones_movimientos WHERE cliente_id = %s ORDER BY fecha, creado_en",
+                                (cliente_id,)).fetchall()
+        return [MovInversion(f["fecha"], f["instrumento"], f["nombre"], f["tipo"], f["importe"], f["moneda"], str(f["id"]))
+                for f in filas]
+
+    def guardar_mov_inversion(self, cliente_id: str, mov) -> object:
+        with self._con() as con:
+            mov.id = str(con.execute("""INSERT INTO inversiones_movimientos (cliente_id, fecha, instrumento, nombre, tipo, importe, moneda)
+                                         VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id""",
+                                      (cliente_id, mov.fecha, mov.instrumento, mov.nombre, mov.tipo, mov.importe, mov.moneda)).fetchone()["id"])
+        return mov
+
+    def borrar_mov_inversion(self, cliente_id: str, mov_id: str) -> bool:
+        if not _es_uuid(mov_id):
+            return False
+        with self._con() as con:
+            return con.execute("DELETE FROM inversiones_movimientos WHERE id = %s AND cliente_id = %s",
+                               (mov_id, cliente_id)).rowcount == 1
 
     def agregar_cuenta(self, cliente_id: str, cuenta: Cuenta) -> Cuenta:
         with self._con() as con:
