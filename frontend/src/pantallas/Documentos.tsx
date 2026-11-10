@@ -3,6 +3,7 @@
 import { api, mensajeDeError } from "../api/client";
 import { fecha, tamano } from "../formato";
 import type { Cuenta, Documento } from "../types/app";
+import { ImportadorGenerico } from "./ImportadorGenerico";
 import { VistaDocumento } from "./VistaDocumento";
 
 const ESTADO: Record<string, { texto: string; clase: string }> = {
@@ -200,6 +201,7 @@ export function Documentos({ clienteId }: { clienteId: string }) {
         </table>
       </div>
       {viendo && <VistaDocumento id={viendo.id} alCerrar={cerrarVista} />}
+      <ImportadorGenerico clienteId={clienteId} alTerminar={() => void cargar()} />
     </div>
   );
 }
