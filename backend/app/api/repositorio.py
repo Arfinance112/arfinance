@@ -381,7 +381,7 @@ class RepositorioMemoria:
             existentes[clave] = ComprobanteRegistrado(
                 uuid.uuid4().hex[:12], c.sentido, c.fecha, c.comprobante, c.doc_contraparte, c.contraparte,
                 c.neto_ars, recordados.get(c.doc_contraparte) if c.sentido == "recibido" else None,
-                c.total * c.tipo_cambio)
+                c.total * c.tipo_cambio, iva_ars=c.iva * c.tipo_cambio)
             self._anotar_origen(documento_id, "comprobante", cliente_id, clave)
             nuevos += 1
         return nuevos, repetidos

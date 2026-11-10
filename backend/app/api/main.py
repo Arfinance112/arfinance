@@ -11,7 +11,7 @@ import uuid
 from datetime import date, timedelta
 from decimal import Decimal
 
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
+from fastapi import Query, Depends, FastAPI, File, Form, Header, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
@@ -26,6 +26,7 @@ from app.api.auth import Usuario, es_admin_plataforma, usuario_actual, verificar
 from app.api import invitaciones
 from app.api.repositorio import DIAS_RECUPERO, ROLES, Cuenta, Documento, Lote, Repositorio, RepositorioMemoria
 from app.finanzas.asientos import construir_asientos
+from app.finanzas.impuestos import impuestos_mensuales
 from app.finanzas.inversiones import INSTRUMENTOS, MONEDAS, TIPOS, MovInversion, posiciones
 from app.finanzas.flujo import flujo_mensual
 from app.finanzas.indices import FilaIndice, TablaIndices
@@ -652,6 +653,19 @@ def resultados(cliente_id: str, rubro_ventas: str = "ING01", unidad_negocio: str
             "filas": {k: {m.isoformat(): v for m, v in serie.items()} for k, serie in pyl.items()},
             "detalle_por_linea": detalle, "avisos": avisos.lista(),
             "unidades_negocio": unidades, "centros_costo": centros}
+
+
+@app.get("/clientes/{cliente_id}/impuestos")
+def impuestos(cliente_id: str, alicuota_iibb: Decimal = Query(Decimal("0.035"), ge=0, le=Decimal("0.2")),
+              tasa_ganancias: Decimal = Query(Decimal("0.35"), ge=0, le=Decimal("0.5")),
+              u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """IVA, IIBB y Ganancias estimados por mes, con proyección de los próximos 3 meses."""
+    _cliente_o_404(r, cliente_id, u)
+    asientos, _, _ = _asientos(r, cliente_id)
+    meses = sorted({a.mes for a in asientos})
+    pyl = pyl_mensual(asientos, meses, {m: c.amortizacion_mes for m, c in r.cierres(cliente_id).items()})
+    bai = {m: v for m, v in pyl.get("bai", {}).items() if v is not None}
+    return impuestos_mensuales(r.comprobantes(cliente_id), bai, alicuota_iibb, tasa_ganancias)
 
 
 # ------------------------------------------------------------------ presupuesto y control (fase 2b)
