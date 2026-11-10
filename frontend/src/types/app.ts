@@ -73,6 +73,14 @@ export interface FlujoMoneda {
 
 export type Flujo = Record<string, FlujoMoneda>;
 
+export interface VistaImportacion {
+  fila_encabezado: number;
+  columnas: string[];
+  total_filas: number;
+  muestra: string[][];
+  destinos: Record<string, { nombre: string; campos: { campo: string; etiqueta: string; obligatorio: boolean }[]; sugerido: Record<string, number> }>;
+}
+
 export interface MesImpuestos {
   mes: string;
   debito_iva: number;
