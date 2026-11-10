@@ -73,6 +73,43 @@ export interface FlujoMoneda {
 
 export type Flujo = Record<string, FlujoMoneda>;
 
+export interface MovInversion {
+  id: string;
+  fecha: string;
+  instrumento: string;
+  nombre: string;
+  tipo: "aporte" | "rescate" | "valuacion";
+  importe: number;
+  moneda: string;
+}
+
+export interface PosicionInversion {
+  instrumento: string;
+  nombre: string;
+  moneda: string;
+  aportado: number;
+  rescatado: number;
+  neto_invertido: number;
+  valuacion: number | null;
+  fecha_valuacion: string | null;
+  resultado: number | null;
+  rendimiento: number | null;
+}
+
+export interface Inversiones {
+  movimientos: MovInversion[];
+  posiciones: PosicionInversion[];
+  instrumentos: string[];
+}
+
+export interface ClienteArchivado {
+  id: string;
+  nombre: string;
+  cuit: string;
+  archivado_en: string;
+  restaurable_hasta: string;
+}
+
 export interface StockItem {
   comprado: number;
   vendido: number;
