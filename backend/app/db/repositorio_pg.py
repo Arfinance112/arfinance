@@ -396,7 +396,7 @@ class RepositorioPostgres:
                                 (cliente_id, sentido, sentido, sin_rubro)).fetchall()
         return [ComprobanteRegistrado(str(f["id"]), f["sentido"], f["fecha"], f["comprobante"], f["cuit"], f["contraparte"],
                                       f["neto"] * f["tipo_cambio"], f["rubro_codigo"], f["total"] * f["tipo_cambio"],
-                                      f["unidad_negocio"], f["centro_costo"]) for f in filas]
+                                      f["unidad_negocio"], f["centro_costo"], f["iva"] * f["tipo_cambio"]) for f in filas]
 
     def clasificar_comprobante(self, cliente_id: str, comprobante_id: str, unidad_negocio: str | None,
                                centro_costo: str | None, mismo_cuit: bool) -> int:
