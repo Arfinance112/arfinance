@@ -258,6 +258,7 @@ button.kpi { cursor: pointer; }
 .tabla.plan tr.edicion td { background: #FAFDFD; }
 .tabla.plan .chip { margin-left: 6px; font-size: 11px; }
 .rubros-celda { max-width: 280px; }
+.fila-proyectada td { font-style: italic; opacity: .8; }
 .pila-chica { display: flex; flex-direction: column; gap: 4px; }
 .pila-chica > .link { align-self: flex-end; font-size: 13px; }
 .lista-simple { list-style: none; padding: 0; display: grid; gap: 8px; }
