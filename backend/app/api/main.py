@@ -6,6 +6,7 @@ Documentación interactiva: http://localhost:8000/docs
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import uuid
 from datetime import date, timedelta
@@ -37,7 +38,7 @@ from app.finanzas.flujo import GRUPOS as GRUPOS_CF
 from app.finanzas.kpis import proyeccion_caja, pyl_mensual
 from app.finanzas.tablero import KPIS, DatosCierre, EntradaMes, armar_tablero, fin_de_mes, kpis_del_mes, mes_anterior, pendientes_fifo
 from app.finanzas.tablero import Documento as TDoc
-from app.ingesta import detalle_ventas
+from app.ingesta import detalle_ventas, importador
 from app.finanzas.presupuesto import control, generar_base, meses_del_anio, nominal, real_por_rubro
 from app.storage import Almacenamiento, crear_almacenamiento
 from fastapi.encoders import jsonable_encoder
@@ -66,7 +67,8 @@ PERMITIDO_A_CARGA = {
     ("POST", "/clientes/{cliente_id}/documentos"), ("POST", "/documentos/{documento_id}/reprocesar"),
     ("PATCH", "/lotes/{lote_id}/movimientos/{mov_id}"), ("POST", "/lotes/{lote_id}/aprobar"),
     ("POST", "/clientes/{cliente_id}/reglas"), ("PATCH", "/clientes/{cliente_id}/comprobantes/{comprobante_id}"),
-    ("POST", "/clientes/{cliente_id}/mermas"),
+    ("POST", "/clientes/{cliente_id}/mermas"), ("POST", "/clientes/{cliente_id}/importar/vista"),
+    ("POST", "/clientes/{cliente_id}/importar"),
 }
 LIBRE = {("POST", "/me/organizacion")}
 ROLES_TEXTO = {"lectura": "solo lectura", "carga": "carga de documentos", "consultor": "consultor"}
@@ -1141,6 +1143,74 @@ async def subir_documento(cliente_id: str, archivo: UploadFile = File(...), cuen
     t = r.encolar(cliente_id, "procesar_documento", parametros)
     return JSONResponse(status_code=202, content={"tipo": "en_cola", "trabajo_id": t.id, "estado": "pendiente",
                                                   "motivo": "ocr" if parametros.get("ocr") else "tamano"})
+
+
+# ------------------------------------------------------------------ importador genérico (paso 6)
+async def _leer_subida(archivo: UploadFile) -> tuple[str, bytes, "ArchivoLeido"]:
+    contenido = await _leer_con_tope(archivo)
+    nombre = nombre_seguro(archivo.filename)
+    try:
+        validar_archivo(nombre, contenido)
+        leido = leer_archivo(nombre, contenido)
+    except ArchivoRechazado as e:
+        raise HTTPException(e.status, str(e))
+    except FormatoNoSoportado as e:
+        raise HTTPException(415, str(e))
+    if not leido.filas:
+        raise HTTPException(422, "No se encontraron filas en el archivo (si es un PDF escaneado, probá con Excel o CSV).")
+    return nombre, contenido, leido
+
+
+@app.post("/clientes/{cliente_id}/importar/vista")
+async def importar_vista(cliente_id: str, archivo: UploadFile = File(...), fila_encabezado: int | None = Form(None),
+                         u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
+    """Muestra las columnas y las primeras filas de cualquier archivo, con una sugerencia de qué es cada columna."""
+    _cliente_o_404(r, cliente_id, u)
+    _, _, leido = await _leer_subida(archivo)
+    try:
+        return importador.vista(leido.filas, fila_encabezado)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
+
+
+@app.post("/clientes/{cliente_id}/importar")
+async def importar_con_mapeo(cliente_id: str, archivo: UploadFile = File(...), destino: str = Form(...),
+                             mapeo: str = Form(...), fila_encabezado: int = Form(0),
+                             u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
+                             alm: Almacenamiento = Depends(almacen)):
+    """Importa el archivo con las columnas elegidas: a ventas o compras por ítem (como un documento más) o a inversiones."""
+    _cliente_o_404(r, cliente_id, u)
+    nombre, _, leido = await _leer_subida(archivo)
+    try:
+        elegido = {str(k): int(v) for k, v in json.loads(mapeo).items() if v is not None and v != ""}
+        if not 0 <= fila_encabezado < len(leido.filas):
+            raise ValueError("Fila de encabezado fuera del archivo")
+        importador.validar_mapeo(destino, elegido, max(len(f) for f in leido.filas))
+    except (ValueError, TypeError, json.JSONDecodeError) as e:
+        raise HTTPException(422, str(e) if not isinstance(e, json.JSONDecodeError) else "Mapeo inválido")
+    canonico = importador.a_canonico(leido.filas, destino, elegido, fila_encabezado)
+    if len(canonico) < 2:
+        raise HTTPException(422, "No quedó ninguna fila con datos para importar.")
+
+    if destino == "inversiones":
+        movs, errores = importador.inversiones_desde(canonico)
+        for m in movs:
+            r.guardar_mov_inversion(cliente_id, MovInversion(m["fecha"], m["instrumento"], m["nombre"], m["tipo"], m["importe"], m["moneda"]))
+        return {"tipo": "inversiones", "importados": len(movs), "errores": errores[:20], "con_errores": len(errores)}
+
+    # ventas / compras: se arma un CSV con las columnas conocidas y lo procesa el lector de siempre
+    texto = "\n".join(";".join(c.replace(";", ",") for c in f) for f in canonico) + "\n"
+    csv_bytes = texto.encode("utf-8")
+    sha = hashlib.sha256(csv_bytes).hexdigest()
+    if r.documento_existe(cliente_id, sha):
+        raise HTTPException(409, "Este mismo contenido ya se importó para este cliente.")
+    nombre_csv = f"{nombre.rsplit('.', 1)[0]}-importado.csv"
+    ruta = alm.guardar(f"clientes/{cliente_id}/{sha[:16]}-{nombre_csv}", csv_bytes, "text/csv")
+    res = procesar_documento(r, cliente_id, nombre_csv, csv_bytes, sha, ruta, None, None)
+    esperado = "detalle_ventas" if destino == "ventas_item" else "detalle_compras"
+    if res.get("tipo") != esperado:
+        raise HTTPException(422, "Las columnas elegidas no alcanzaron para leer el archivo: revisá fecha, código, cantidad y precio.")
+    return res
 
 
 # ------------------------------------------------------------------ plan de cuentas contable
