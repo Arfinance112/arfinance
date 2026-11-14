@@ -24,7 +24,7 @@ const estadoDe = (estado: string, tipo: string) =>
 const puedeReprocesar = (d: Documento) =>
   d.tipo !== "planilla_v2" && !(d.estado === "aprobado" && !/^0 /.test(d.detalle ?? ""));
 /** Mismo criterio que el servidor: un extracto con movimientos ya en Tesorería no se elimina. */
-const puedeEliminar = (d: Documento) => !(d.estado === "aprobado" && !/^0 /.test(d.detalle ?? ""));
+const conTesoreria = (d: Documento) => d.estado === "aprobado" && !/^0 /.test(d.detalle ?? "");
 const ACEPTADOS = ".xlsx,.xlsm,.csv,.txt,.pdf";
 
 interface Subida {
@@ -52,10 +52,14 @@ export function Documentos({ clienteId }: { clienteId: string }) {
       : d.tipo === "mis_comprobantes" ? "el archivo y todos los comprobantes que se cargaron desde él"
       : d.tipo === "f931" ? "el archivo y el costo laboral de ese período"
       : "el archivo y lo que se cargó desde él";
-    if (!window.confirm(`¿Eliminar «${d.nombre}»?\n\nSe borra ${queSeBorra}. No se puede deshacer.`)) return;
+    const aviso = conTesoreria(d)
+      ? `¿Eliminar «${d.nombre}»?\n\nEste extracto ya está aprobado: se borran también sus ${d.detalle} de Tesorería ` +
+        "(y con eso cambian saldos, flujo de caja y resultados). No se puede deshacer."
+      : `¿Eliminar «${d.nombre}»?\n\nSe borra ${queSeBorra}. No se puede deshacer.`;
+    if (!window.confirm(aviso)) return;
     setReprocesando(d.id);
     try {
-      await api.eliminarDocumento(d.id);
+      await api.eliminarDocumento(d.id, conTesoreria(d));
       setSubidas((s) => [{ nombre: d.nombre, estado: "ok", mensaje: "Eliminado" }, ...s]);
     } catch (e) {
       setSubidas((s) => [{ nombre: d.nombre, estado: "error", mensaje: mensajeDeError(e) }, ...s]);
@@ -181,11 +185,11 @@ export function Documentos({ clienteId }: { clienteId: string }) {
                 <td className="acciones-doc">
                   {d.lote_id && (
                     <a className="link" href={`#/clientes/${clienteId}/lotes/${d.lote_id}`}>
-                      {d.estado === "aprobado" ? "Ver" : "Conciliar"}
+                      {d.estado === "aprobado" ? "Ver conciliación" : "Conciliar"}
                     </a>
                   )}
-                  <button className="link" onClick={() => setViendo(d)}>Ver</button>
-                  {puedeEliminar(d) && (
+                  <button className="link" onClick={() => setViendo(d)}>Ver archivo</button>
+                  {(
                     <button className="link peligro" disabled={reprocesando === d.id} onClick={() => void eliminar(d)}>Eliminar</button>
                   )}
                   {puedeReprocesar(d) && (
