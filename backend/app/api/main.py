@@ -1377,14 +1377,17 @@ def descargar_documento(documento_id: str, u: Usuario = Depends(usuario_actual),
 
 
 @app.delete("/documentos/{documento_id}", status_code=204)
-def eliminar_documento(documento_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
-                       alm: Almacenamiento = Depends(almacen)):
+def eliminar_documento(documento_id: str, con_tesoreria: bool = False, u: Usuario = Depends(usuario_actual),
+                       r: Repositorio = Depends(repo), alm: Almacenamiento = Depends(almacen)):
     """Borra el documento, el archivo original y todo lo que se cargó desde él (comprobantes, F.931, ventas
     por ítem, el lote de un extracto). Un extracto que ya pasó movimientos a Tesorería no se borra."""
     doc = _documento_o_404(r, documento_id, u)
     lote = r.lote(doc.lote_id) if doc.lote_id else None
     if lote and lote.estado == "aprobado" and lote.resultado.movimientos:
-        raise HTTPException(409, "Este extracto ya pasó sus movimientos a Tesorería: no se puede eliminar sin borrar esos movimientos.")
+        if not con_tesoreria:
+            raise HTTPException(409, "Este extracto ya pasó sus movimientos a Tesorería: para eliminarlo hay que borrar también esos movimientos.")
+        n = r.borrar_tesoreria_de_lote(doc.cliente_id, lote.id)
+        log.info("tesoreria_borrada_con_extracto", extra={"cliente_id": doc.cliente_id, "movimientos": n})
     r.borrar_documento(doc.id)
     try:
         alm.borrar(doc.storage_path)

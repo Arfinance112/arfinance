@@ -142,6 +142,7 @@ class Repositorio(Protocol):
     # tesorería
     def tesoreria(self, cliente_id: str) -> list[MovimientoTesoreria]: ...
     def insertar_tesoreria(self, cliente_id: str, movimientos: list[MovimientoTesoreria], lote_id: str | None = None) -> None: ...
+    def borrar_tesoreria_de_lote(self, cliente_id: str, lote_id: str) -> int: ...
     # devengado (fase 2a)
     def guardar_comprobantes(self, cliente_id: str, documento_id: str, comps: list[ComprobanteArca]) -> tuple[int, int]: ...
     def comprobantes(self, cliente_id: str, sentido: str | None = None, sin_rubro: bool = False) -> list[ComprobanteRegistrado]: ...
@@ -208,6 +209,7 @@ class RepositorioMemoria:
         self._ventas: dict[str, dict[tuple, LineaVenta]] = {}
         self._compras_item: dict[str, dict[tuple, LineaCompra]] = {}
         self._inversiones: dict[str, list[MovInversion]] = {}
+        self._teso_de_lote: dict[str, set[str]] = {}
         self._mermas: dict[str, list[Merma]] = {}
         self._cierres: dict[str, dict[date, DatosCierre]] = {}
         self._metas: dict[str, dict[str, tuple[Decimal | None, str]]] = {}
@@ -366,6 +368,14 @@ class RepositorioMemoria:
         for m in movimientos:
             m.id = m.id or uuid.uuid4().hex[:12]
         self._tesoreria[cliente_id].extend(movimientos)
+        if lote_id:
+            self._teso_de_lote.setdefault(lote_id, set()).update(m.id for m in movimientos)
+
+    def borrar_tesoreria_de_lote(self, cliente_id: str, lote_id: str) -> int:
+        ids = self._teso_de_lote.pop(lote_id, set())
+        antes = len(self._tesoreria.get(cliente_id, []))
+        self._tesoreria[cliente_id] = [m for m in self._tesoreria.get(cliente_id, []) if m.id not in ids]
+        return antes - len(self._tesoreria[cliente_id])
 
     # ------------------------------------------------------------------ devengado
     def guardar_comprobantes(self, cliente_id: str, documento_id: str, comps: list[ComprobanteArca]) -> tuple[int, int]:
