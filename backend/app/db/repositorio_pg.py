@@ -260,6 +260,12 @@ class RepositorioPostgres:
             f = con.execute(self._SELECT_DOCS + " WHERE d.id = %s", (documento_id,)).fetchone()
         return self._documento(f) if f else None
 
+    def borrar_tesoreria_de_lote(self, cliente_id: str, lote_id: str) -> int:
+        if not _es_uuid(lote_id):
+            return 0
+        with self._con() as con:
+            return con.execute("DELETE FROM t_tesoreria WHERE cliente_id = %s AND lote_id = %s", (cliente_id, lote_id)).rowcount
+
     def borrar_documento(self, documento_id: str) -> None:
         """Borra el documento y TODO lo que se cargó desde él (para reprocesarlo). El lote y su staging caen en
         cascada; la API no llama a esto si el lote ya pasó movimientos a Tesorería."""
