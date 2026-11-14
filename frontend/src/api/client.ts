@@ -147,7 +147,8 @@ export const api = {
   vincularRubros: (id: string, codigo: string, rubros: string[]) =>
     pedir<{ rubros: string[] }>(`/clientes/${id}/plan-cuentas/${codigo}/rubros`, { method: "PUT", body: JSON.stringify({ rubros }) }),
   vistaDocumento: (id: string) => pedir<VistaDocumento>(`/documentos/${id}/vista`),
-  eliminarDocumento: (id: string) => pedir<string>(`/documentos/${id}`, { method: "DELETE" }),
+  eliminarDocumento: (id: string, conTesoreria = false) =>
+    pedir<string>(`/documentos/${id}${conTesoreria ? "?con_tesoreria=true" : ""}`, { method: "DELETE" }),
   /** Abre el original en una pestaña nueva (va con el token de sesión, por eso no alcanza un enlace común). */
   abrirDocumento: async (id: string) => {
     const pestana = window.open("", "_blank");   // se abre ya, antes del await: si no, el navegador la bloquea
