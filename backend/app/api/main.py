@@ -466,6 +466,31 @@ def archivar_cliente(cliente_id: str, u: Usuario = Depends(usuario_actual), r: R
     return {"archivado": c.id, "restaurable_dias": DIAS_RECUPERO}
 
 
+class VaciarIn(BaseModel):
+    confirmacion: str                       # el nombre del cliente, para no vaciar uno por error
+    saldos_iniciales: bool = True           # poner en 0 los saldos iniciales de las cuentas
+    rubros_recordados: bool = False         # olvidar el rubro aprendido de cada proveedor
+
+
+@app.post("/clientes/{cliente_id}/vaciar")
+def vaciar_cliente(cliente_id: str, body: VaciarIn, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo),
+                   alm: Almacenamiento = Depends(almacen)):
+    """Deja al cliente sin datos cargados (documentos, extractos, Tesorería, comprobantes, F.931, ventas y compras por ítem,
+    mermas, inversiones y cierres) para empezar de nuevo. Conserva cuentas, plan de cuentas, ítems, reglas, metas y presupuesto."""
+    c = _cliente_o_404(r, cliente_id, u)
+    if body.confirmacion.strip().casefold() != c.nombre.strip().casefold():
+        raise HTTPException(422, f"Para confirmar escribí el nombre exacto del cliente: {c.nombre}")
+    rutas = [d.storage_path for d in r.documentos(cliente_id) if d.storage_path]
+    borrado = r.vaciar_cliente(cliente_id, body.saldos_iniciales, body.rubros_recordados)
+    for ruta in rutas:
+        try:
+            alm.borrar(ruta)
+        except Exception as e:  # noqa: BLE001 — el dato ya no está; un archivo huérfano no rompe nada
+            log.warning("archivo_no_borrado", extra={"error": repr(e)})
+    log.info("cliente_vaciado", extra={"cliente_id": cliente_id, **{k: v for k, v in borrado.items()}})
+    return {"borrado": borrado, "saldos_iniciales_en_cero": body.saldos_iniciales}
+
+
 @app.post("/clientes/{cliente_id}/restaurar")
 def restaurar_cliente(cliente_id: str, u: Usuario = Depends(usuario_actual), r: Repositorio = Depends(repo)):
     c = r.cliente(cliente_id)
@@ -996,6 +1021,17 @@ def tablero(cliente_id: str, mes: date, u: Usuario = Depends(usuario_actual), r:
                 "ebitda_pct": (ing_p + var_p + fijos_p) / ing_p}
 
     secciones = armar_tablero(kpis_del_mes(actual), kpis_del_mes(_datos_mes(r, cliente_id, anterior, ctx)), ppto, r.metas(cliente_id))
+    con_datos = {a.mes for a in asientos} | {m.fecha.replace(day=1) for m in ctx["tesoreria"]}
+    if mes not in con_datos:
+        # sin registros en el mes los KPIs no valen 0: no hay dato. Sin semáforos que digan "verde" por nada.
+        for s in secciones:
+            for k in s["kpis"]:
+                k.semaforo = None
+                if s["titulo"] != "Caja" or k.clave == "flujo_operativo":
+                    k.valor = k.variacion = None
+        ctx["avisos"].add(f"No hay datos cargados para {mes.strftime('%m/%Y')}: los indicadores aparecen vacíos."
+                          + (" El saldo de caja sale de los saldos iniciales de las cuentas." if any(
+                              c.saldo_inicial for c in ctx["cuentas"].values()) else ""))
     if mes not in cierres:
         ctx["avisos"].add("Sin datos de cierre del mes (stock, bienes de uso, deudas): días de stock, prueba ácida, endeudamiento y Dupont no se calculan.")
     return {"mes": mes, "secciones": secciones,

@@ -119,6 +119,7 @@ class Repositorio(Protocol):
     def clientes(self, usuario_id: str) -> list[Cliente]: ...
     def cliente(self, cliente_id: str) -> Cliente | None: ...
     def archivar_cliente(self, cliente_id: str) -> None: ...
+    def vaciar_cliente(self, cliente_id: str, saldos_iniciales: bool, rubros_recordados: bool) -> dict[str, int]: ...
     def restaurar_cliente(self, cliente_id: str) -> bool: ...
     def clientes_archivados(self, usuario_id: str) -> list[Cliente]: ...
     # inversiones (paso 5)
@@ -264,6 +265,33 @@ class RepositorioMemoria:
 
     def archivar_cliente(self, cliente_id: str) -> None:
         self._clientes[cliente_id].archivado_en = datetime.now()
+
+    def vaciar_cliente(self, cliente_id: str, saldos_iniciales: bool, rubros_recordados: bool) -> dict[str, int]:
+        docs = [d for d in self._docs.values() if d.cliente_id == cliente_id]
+        n = {"documentos": len(docs), "movimientos_tesoreria": len(self._tesoreria.get(cliente_id, [])),
+             "comprobantes": len(self._comps.get(cliente_id, {})), "f931": len(self._f931.get(cliente_id, {})),
+             "ventas_item": len(self._ventas.get(cliente_id, {})), "compras_item": len(self._compras_item.get(cliente_id, {})),
+             "mermas": len(self._mermas.get(cliente_id, [])), "inversiones": len(self._inversiones.get(cliente_id, [])),
+             "cierres": len(self._cierres.get(cliente_id, {}))}
+        for d in docs:
+            self._docs.pop(d.id, None)
+            self._origen.pop(d.id, None)
+            if d.lote_id:
+                self._lotes.pop(d.lote_id, None)
+                self._teso_de_lote.pop(d.lote_id, None)
+        for lid in [k for k, l in self._lotes.items() if l.cliente_id == cliente_id]:
+            self._lotes.pop(lid, None)
+        self._tesoreria[cliente_id] = []
+        for dic in (self._comps, self._f931, self._ventas, self._compras_item, self._cierres):
+            dic.pop(cliente_id, None)
+        self._mermas.pop(cliente_id, None)
+        self._inversiones.pop(cliente_id, None)
+        if rubros_recordados:
+            n["rubros_recordados"] = len(self._rubro_tercero.pop(cliente_id, {}))
+        if saldos_iniciales:
+            for c in self._cuentas.get(cliente_id, {}).values():
+                c.saldo_inicial = Decimal(0)
+        return n
 
     def restaurar_cliente(self, cliente_id: str) -> bool:
         c = self._clientes.get(cliente_id)
