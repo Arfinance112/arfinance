@@ -137,6 +137,27 @@ class RepositorioPostgres:
         return Cliente(str(f["id"]), f["nombre"], f["cuit"] or "", str(f["organizacion_id"]), f["creado_en"],
                        f["archivado_en"]) if f else None
 
+    # lo que se carga desde archivos o a mano, mes a mes; los maestros (cuentas, plan, ítems, reglas, metas,
+    # presupuesto) quedan. El orden respeta las claves foráneas.
+    _TABLAS_DE_DATOS = ("t_tesoreria", "comprobantes_arca", "t_ventas", "t_compras", "compras_por_item", "f931_declaraciones",
+                        "t_mermas", "inversiones_movimientos", "t_balance_cierres", "lotes_importacion", "documentos")
+
+    def vaciar_cliente(self, cliente_id: str, saldos_iniciales: bool, rubros_recordados: bool) -> dict[str, int]:
+        nombres = {"t_tesoreria": "movimientos_tesoreria", "comprobantes_arca": "comprobantes", "t_ventas": "ventas_item",
+                   "compras_por_item": "compras_item", "f931_declaraciones": "f931", "t_mermas": "mermas",
+                   "inversiones_movimientos": "inversiones", "t_balance_cierres": "cierres", "documentos": "documentos"}
+        n: dict[str, int] = {}
+        with self._con() as con, con.transaction():
+            for t in self._TABLAS_DE_DATOS:
+                borradas = con.execute(f"DELETE FROM {t} WHERE cliente_id = %s", (cliente_id,)).rowcount
+                if t in nombres:
+                    n[nombres[t]] = n.get(nombres[t], 0) + borradas
+            if rubros_recordados:
+                n["rubros_recordados"] = con.execute("DELETE FROM rubros_por_tercero WHERE cliente_id = %s", (cliente_id,)).rowcount
+            if saldos_iniciales:
+                con.execute("UPDATE cuentas SET saldo_inicial = 0 WHERE cliente_id = %s", (cliente_id,))
+        return n
+
     def archivar_cliente(self, cliente_id: str) -> None:
         with self._con() as con:
             con.execute("UPDATE clientes SET archivado_en = now() WHERE id = %s", (cliente_id,))
