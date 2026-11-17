@@ -68,6 +68,20 @@ export function Clientes() {
               if (window.confirm(`¿Archivar ${c.nombre}? Deja de verse, pero no se borra nada: lo podés restaurar durante 30 días.`))
                 void accion(async () => { await api.archivarCliente(c.id); return `${c.nombre} archivado. Lo podés restaurar abajo durante 30 días.`; });
             }}>Archivar</button>
+            <button type="button" className="link peligro" onClick={() => {
+              const escrito = window.prompt(
+                `Vaciar ${c.nombre}: se borran TODOS sus documentos, extractos, movimientos de Tesorería, comprobantes, F.931, ` +
+                "ventas y compras por ítem, mermas, inversiones y cierres, y los saldos iniciales de las cuentas quedan en 0. " +
+                "Quedan las cuentas, el plan de cuentas, los ítems, las reglas, las metas y el presupuesto. No se puede deshacer.\n\n" +
+                `Para confirmar, escribí el nombre del cliente: ${c.nombre}`);
+              if (escrito === null) return;
+              void accion(async () => {
+                const r = await api.vaciarCliente(c.id, escrito, true);
+                const b = r.borrado;
+                return `${c.nombre} quedó sin datos: ${b.documentos ?? 0} documentos, ${b.movimientos_tesoreria ?? 0} movimientos de Tesorería ` +
+                  `y ${b.comprobantes ?? 0} comprobantes borrados; saldos iniciales en 0.`;
+              });
+            }}>Vaciar datos</button>
             </div>
           ))}
         </div>
