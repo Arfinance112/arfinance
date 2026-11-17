@@ -89,6 +89,9 @@ export const api = {
   clientes: () => pedir<ClienteResumen[]>("/clientes"),
   clientesArchivados: () => pedir<ClienteArchivado[]>("/clientes/archivados"),
   archivarCliente: (id: string) => pedir<{ archivado: string }>(`/clientes/${id}/archivar`, { method: "POST" }),
+  vaciarCliente: (id: string, confirmacion: string, saldosIniciales: boolean) =>
+    pedir<{ borrado: Record<string, number> }>(`/clientes/${id}/vaciar`, { method: "POST",
+      body: JSON.stringify({ confirmacion, saldos_iniciales: saldosIniciales, rubros_recordados: false }) }),
   restaurarCliente: (id: string) => pedir<{ restaurado: string }>(`/clientes/${id}/restaurar`, { method: "POST" }),
   impuestos: (id: string, alicuotaIibb: number, tasaGanancias: number) =>
     pedir<Impuestos>(`/clientes/${id}/impuestos?${new URLSearchParams({ alicuota_iibb: String(alicuotaIibb), tasa_ganancias: String(tasaGanancias) })}`),
