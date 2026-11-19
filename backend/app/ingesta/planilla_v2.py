@@ -13,6 +13,11 @@ Correspondencia: CONFIG → cliente · M_Cuentas → cuentas · M_Items → íte
 por ítem · T_Compras → comprobantes recibidos con rubro · T_Personal → costo laboral por mes ·
 T_Mermas → mermas · T_Presupuesto → base · Balance_Gestion → datos de cierre · Tablero → metas ·
 Indices → índices globales (opcional y solo meses que la web no tiene).
+
+Novedades de la v3 (todas opcionales: una v2 se sigue leyendo igual):
+M_PlanCuentas → plan de cuentas contable · M_Rubros «Cuenta contable» → rubro → cuenta ·
+T_Ventas / T_Compras «Unidad de negocio» y «Centro de costo» → clasificación de cada comprobante ·
+T_Compras con Ítem y Cantidad → compras por ítem (stock teórico y costo real) · T_Inversiones → inversiones.
 """
 from __future__ import annotations
 
@@ -24,7 +29,9 @@ from decimal import Decimal, InvalidOperation
 
 from app.api.repositorio import Cuenta
 from app.finanzas.indices import FilaIndice
-from app.finanzas.items import Item, LineaVenta, Merma
+from app.finanzas.inversiones import MovInversion
+from app.finanzas.items import Item, LineaCompra, LineaVenta, Merma
+from app.finanzas.plan_cuentas import CLASES, CuentaContable
 from app.finanzas.tablero import DatosCierre
 from app.ingesta.comprobantes_arca import ComprobanteArca
 from app.ingesta.f931 import DeclaracionF931
@@ -68,6 +75,12 @@ class PlanillaV2:
     cierres: list[DatosCierre] = field(default_factory=list)
     metas: dict[str, tuple[Decimal, str]] = field(default_factory=dict)
     indices: list[FilaIndice] = field(default_factory=list)
+    plan: list[CuentaContable] = field(default_factory=list)                     # v3
+    rubro_cuenta: dict[str, str] = field(default_factory=dict)                   # v3
+    dimensiones: dict[tuple, tuple[str | None, str | None]] = field(default_factory=dict)  # (sentido, comp, cuit) → (UN, CC)
+    lineas_compra: list[LineaCompra] = field(default_factory=list)              # v3
+    inversiones: list[MovInversion] = field(default_factory=list)               # v3
+    version: str = "v2"
     ejemplos_omitidos: int = 0
     avisos: list[str] = field(default_factory=list)
 
@@ -82,6 +95,9 @@ class PlanillaV2:
                 "renglones_venta": len(self.lineas_venta), "compras": len(self.recibidos), "meses_personal": len(self.personal),
                 "mermas": len(self.mermas), "celdas_presupuesto": len(self.presupuesto), "cierres": len(self.cierres),
                 "metas": len(self.metas), "meses_indices": len(self.indices), "ejemplos_omitidos": self.ejemplos_omitidos,
+                "version": self.version, "cuentas_contables": len(self.plan), "rubros_con_cuenta": len(self.rubro_cuenta),
+                "renglones_compra": len(self.lineas_compra), "inversiones": len(self.inversiones),
+                "comprobantes_clasificados": sum(1 for v in self.dimensiones.values() if any(v)),
                 "avisos": self.avisos}
 
 
@@ -119,6 +135,16 @@ class _Hoja:
                 return i
         raise PlanillaInvalida(f"No encuentro la columna «{prefijo}»: ¿es la planilla v2?")
 
+    def opt(self, prefijo: str) -> int | None:
+        try:
+            return self.col(prefijo)
+        except PlanillaInvalida:
+            return None
+
+
+def _celda(f, i: int | None):
+    return f[i] if i is not None and i < len(f) else None
+
 
 def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
     from openpyxl import load_workbook
@@ -154,6 +180,8 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
             p.empresa = _txt(f[1])
         elif rotulo == "cuit":
             p.cuit = _txt(f[1])
+        elif rotulo.startswith("version de la planilla"):
+            p.version = _txt(f[1]) or "v2"
 
     h = _Hoja(wb["M_Cuentas"], 4)
     for f in h.filas:
@@ -207,6 +235,8 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
 
     if "T_Ventas" in wb.sheetnames:
         h = _Hoja(wb["T_Ventas"], 4)
+        i_un, i_cc = h.opt("Unidad de negocio"), h.opt("Centro de costo")
+        dims_v: dict[tuple, list] = {}
         grupos: dict[tuple, list] = defaultdict(lambda: [CERO, CERO, CERO, None, False])
         for f in h.filas:
             fecha = _fecha(f[h.col("Fecha")])
@@ -222,6 +252,10 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
             rubro = _txt(f[h.col("Rubro ingreso")]) or "ING01"
             g = grupos[(comp, tipo, _txt(f[h.col("Cliente")]), rubro)]
             g[0] += abs(neto); g[1] += abs(iva or CERO); g[2] += abs(total); g[3] = fecha; g[4] = nc
+            d = dims_v.setdefault((comp, tipo, _txt(f[h.col("Cliente")]), rubro), [None, None])
+            un, cc = _txt(_celda(f, i_un)).upper(), _txt(_celda(f, i_cc)).upper()
+            d[0] = d[0] or (un if un and un != "GENERAL" else None)
+            d[1] = d[1] or cc or None
             cantidad, item = _dec(f[h.col("Cantidad")]) or CERO, _txt(f[h.col("Ítem")]).upper()
             if item and cantidad:
                 p.lineas_venta.append(LineaVenta(fecha, comp, item, signo * abs(cantidad), abs(neto) / abs(cantidad)))
@@ -233,9 +267,15 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
             numero = comp if len(rubros_por_comp[comp]) == 1 else f"{comp} ({rubro})"
             s = -1 if nc else 1
             p.emitidos.append((ComprobanteArca(fecha, tipo, numero, cuit, nombre, "ARS", Decimal(1), s * neto, s * iva, s * total, nc, "emitido"), rubro))
+            un, cc = dims_v.get((comp, tipo, cli, rubro), (None, None))
+            if un or cc:
+                p.dimensiones[("emitido", numero, cuit)] = (un, cc)
 
     if "T_Compras" in wb.sheetnames:
         h = _Hoja(wb["T_Compras"], 4)
+        i_un = h.opt("UN efectiva") if h.opt("UN efectiva") is not None else h.opt("Unidad de negocio")
+        i_cc, i_item, i_cant = h.opt("Centro de costo"), h.opt("Ítem"), h.opt("Cantidad física")
+        dims_c: dict[tuple, list] = {}
         grupos = defaultdict(lambda: [CERO, CERO, CERO, None, False])
         for f in h.filas:
             fecha = _fecha(f[h.col("Fecha")])
@@ -247,8 +287,17 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
                 continue
             tipo = _txt(f[h.col("Tipo de comprobante")]) or "Factura"
             nc = "credito" in normalizar(tipo)
-            g = grupos[(_txt(f[h.col("N° comprobante")]), tipo, _txt(f[h.col("Proveedor")]), _txt(f[h.col("Rubro")]))]
+            clave = (_txt(f[h.col("N° comprobante")]), tipo, _txt(f[h.col("Proveedor")]), _txt(f[h.col("Rubro")]))
+            g = grupos[clave]
             g[0] += abs(neto); g[1] += abs(iva or CERO); g[2] += abs(total); g[3] = fecha; g[4] = nc
+            d = dims_c.setdefault(clave, [None, None])
+            un, cc = _txt(_celda(f, i_un)).upper(), _txt(_celda(f, i_cc)).upper()
+            d[0] = d[0] or (un if un and un != "GENERAL" else None)
+            d[1] = d[1] or cc or None
+            item, cant = _txt(_celda(f, i_item)).upper(), _dec(_celda(f, i_cant))
+            if item and cant:
+                p.lineas_compra.append(LineaCompra(fecha, clave[0], contraparte(clave[2])[0], item,
+                                                   (-1 if nc else 1) * abs(cant), (abs(neto) / abs(cant)).quantize(Decimal("0.0001"))))
         rubros_por_comp = defaultdict(set)
         for (comp, _, prov, rubro) in grupos:
             rubros_por_comp[(comp, prov)].add(rubro)
@@ -257,6 +306,9 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
             numero = comp if len(rubros_por_comp[(comp, prov)]) == 1 else f"{comp} ({rubro})"
             s = -1 if nc else 1
             p.recibidos.append((ComprobanteArca(fecha, tipo, numero, cuit, nombre, "ARS", Decimal(1), s * neto, s * iva, s * total, nc, "recibido"), rubro))
+            un, cc = dims_c.get((comp, tipo, prov, rubro), (None, None))
+            if un or cc:
+                p.dimensiones[("recibido", numero, cuit)] = (un, cc)
 
     if "T_Personal" in wb.sheetnames:
         h = _Hoja(wb["T_Personal"], 4)
@@ -338,6 +390,41 @@ def leer(contenido: bytes, omitir_ejemplos: bool = True) -> PlanillaV2:
             p.indices.append(FilaIndice(mes.replace(day=1), _dec(f[h.col("IPC %")]), _dec(f[h.col("Paritaria")]),
                                         _dec(f[h.col("Tarifas")]), tc))
 
+    if "M_PlanCuentas" in wb.sheetnames:
+        h = _Hoja(wb["M_PlanCuentas"], 4)
+        clase_de = {normalizar(v): k for k, v in CLASES.items()}
+        for f in h.filas:
+            codigo = _txt(f[h.col("Código")]).split(".")[0]
+            if not codigo.isdigit():
+                continue
+            clase_txt = _txt(f[h.col("Clase")])
+            clase = int(clase_txt) if clase_txt.isdigit() else clase_de.get(normalizar(clase_txt), 1)
+            p.plan.append(CuentaContable(codigo, _txt(f[h.col("Cuenta")]) or codigo, _txt(f[h.col("Imputable")]).upper() != "N",
+                                         _txt(_celda(f, h.opt("Ajustable"))).upper() == "S", False, clase,
+                                         _txt(f[h.col("Cuenta madre")]).split(".")[0] or None, _txt(_celda(f, h.opt("Observaciones")))))
+    if "M_Rubros" in wb.sheetnames:
+        h = _Hoja(wb["M_Rubros"], 4)
+        i_cta = h.opt("Cuenta contable")
+        if i_cta is not None:
+            for f in h.filas:
+                rubro, cuenta = _txt(f[h.col("Código")]), _txt(_celda(f, i_cta)).split(".")[0]
+                if rubro and cuenta:
+                    p.rubro_cuenta[rubro] = cuenta
+    if "T_Inversiones" in wb.sheetnames:
+        h = _Hoja(wb["T_Inversiones"], 4)
+        tipos = {"aporte": "aporte", "rescate": "rescate", "valuacion": "valuacion"}
+        for f in h.filas:
+            fecha, importe = _fecha(f[h.col("Fecha")]), _dec(f[h.col("Importe")])
+            if not fecha or importe is None or es_ejemplo(h, f):
+                continue
+            tipo = tipos.get(normalizar(_txt(f[h.col("Tipo de movimiento")])))
+            nombre = _txt(f[h.col("Nombre")])[:80]
+            if not tipo or not nombre:
+                p.avisos.append(f"T_Inversiones: la fila del {fecha:%d/%m/%Y} no tiene tipo (Aporte/Rescate/Valuación) o nombre: se omitió.")
+                continue
+            inst = _txt(f[h.col("Instrumento")]) or "Otro"
+            p.inversiones.append(MovInversion(fecha, inst, nombre, tipo, abs(importe), "USD" if "USD" in _txt(f[h.col("Moneda")]).upper() else "ARS"))
+
     for hoja in sorted(sin_calcular):
         p.avisos.append(f"{hoja}: hay filas sin los importes calculados. Abrí la planilla en Excel, guardala y volvé a "
                         "subirla (los archivos generados por otros programas no traen los resultados de las fórmulas).")
@@ -377,8 +464,43 @@ def aplicar(r, cliente_id: str, p: PlanillaV2, documento_id: str, reglas_globale
             rubro = rubro_de.get((reg.comprobante, reg.cuit))
             if rubro and reg.rubro != rubro and (sentido == "recibido" or rubro != "ING01"):
                 r.asignar_rubro(cliente_id, reg.id, rubro, False)
+    if p.dimensiones:
+        for sentido in ("emitido", "recibido"):
+            for reg in r.comprobantes(cliente_id, sentido):
+                un, cc = p.dimensiones.get((sentido, reg.comprobante, reg.cuit), (None, None))
+                if un or cc:
+                    r.clasificar_comprobante(cliente_id, reg.id, un, cc, False)
+                    hecho["comprobantes_clasificados"] += 1
     if p.lineas_venta:
         hecho["renglones_venta"], _ = r.guardar_lineas_venta(cliente_id, documento_id, p.lineas_venta)
+    if p.lineas_compra:
+        hecho["renglones_compra"], _ = r.guardar_lineas_compra(cliente_id, documento_id, p.lineas_compra)
+    for m in p.inversiones:
+        r.guardar_mov_inversion(cliente_id, m)
+        hecho["inversiones"] += 1
+    if p.plan and not r.plan_cuentas(cliente_id):
+        # padres antes que hijos (la base exige que la cuenta madre exista)
+        por_codigo = {c.codigo: c for c in p.plan}
+        orden, vistos = [], set()
+        def visitar(c):
+            if c.codigo in vistos:
+                return
+            vistos.add(c.codigo)
+            if c.padre in por_codigo:
+                visitar(por_codigo[c.padre])
+            elif c.padre:
+                c.padre = None
+            orden.append(c)
+        for c in p.plan:
+            visitar(c)
+        r.iniciar_plan(cliente_id, orden)
+        hecho["cuentas_contables"] = len(orden)
+    if p.rubro_cuenta:
+        plan = r.plan_cuentas(cliente_id)
+        for rubro, cuenta in p.rubro_cuenta.items():
+            if cuenta in plan and plan[cuenta].imputable:
+                r.vincular_rubro(cliente_id, rubro, cuenta)
+                hecho["rubros_con_cuenta"] += 1
     for dj in p.personal:
         r.guardar_f931(cliente_id, documento_id, dj)
         hecho["meses_personal"] += 1
