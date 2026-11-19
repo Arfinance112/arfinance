@@ -645,6 +645,10 @@ def _asientos(r: Repositorio, cliente_id: str, rubro_ventas: str = "ING01"):
     # CMV a costo estándar y mermas valorizadas (fase 2c)
     de_items, av = asientos_de_items(r.lineas_venta(cliente_id), r.mermas(cliente_id), r.items(cliente_id), indices, seeds.rubros())
     asientos += de_items
+    # una misma unidad o centro escrito distinto ("Minorista" en el ítem, "MINORISTA" en el comprobante) es uno solo
+    for a in asientos:
+        a.unidad_negocio = (a.unidad_negocio or "GENERAL").strip().upper() or "GENERAL"
+        a.centro_costo = (a.centro_costo or "GENERAL").strip().upper() or "GENERAL"
     if av.items_desconocidos:
         avisos.extra.append(f"{len(av.items_desconocidos)} códigos vendidos sin alta en Ítems ({', '.join(sorted(av.items_desconocidos)[:5])}): "
                             "su costo de mercadería no se calcula hasta darlos de alta.")
